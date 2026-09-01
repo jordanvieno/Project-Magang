@@ -1,0 +1,51 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('Preparation & Checkout') {
+            steps {
+                echo 'Menyiapkan environment dan memeriksa dependensi...'
+                bat 'git --version'
+            }
+        }
+
+        stage('Build Simulation') {
+            steps {
+                echo 'Menyimulasikan proses kompilasi kode aplikasi kanal digital...'
+                // Membuat direktori "target" dan sebuah file teks sebagai pengganti aplikasi sungguhan
+                bat 'mkdir target'
+                bat 'echo "Ini adalah hasil kompilasi aplikasi siap rilis" > target/app-release.txt'
+            }
+        }
+
+        stage('Security & Quality Gate') {
+            steps {
+                echo 'Menjalankan pemindaian kualitas dan keamanan statis (Dummy)...'
+                // Memastikan file hasil build benar-benar tercipta
+                bat 'dir target'
+            }
+        }
+
+        stage('Archive Artifact') {
+            steps {
+                echo 'Menyimpan berkas siap rilis ke dalam brankas (Artifacts) Jenkins...'
+                // Menginstruksikan Jenkins untuk mengamankan file hasil kompilasi
+                archiveArtifacts artifacts: 'target/*.txt', allowEmptyArchive: false
+            }
+        }
+    }
+
+    // Blok post berjalan otomatis di akhir pipeline, bergantung pada hasil eksekusi tahapan di atas
+    post {
+        always {
+            echo 'Membersihkan workspace sementara agar siap untuk siklus build berikutnya...'
+            bat 'rmdir /s /q target'
+        }
+        success {
+            echo 'STATUS: LULUS UJI! Artefak aplikasi berhasil diamankan dan siap dipindahkan ke server lab.'
+        }
+        failure {
+            echo 'STATUS: GAGAL! Eksekusi dihentikan. Segera periksa log tahap yang bermasalah.'
+        }
+    }
+}
