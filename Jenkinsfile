@@ -1,32 +1,18 @@
-pipeline {
-    agent any
-
-    tools {
-        maven 'maven-3.9.9'
-    }
-
-    stages {
-        stage('Build & Unit Test') {
-            steps {
-                echo 'Fase 1: Mengompilasi kode dan menjalankan pengujian otomatis...'
-                bat 'mvn clean package'
-            }
-        }
-
-        stage('Deploy to SIT') {
+stage('Deploy to SIT') {
             when {
-                branch 'develop'
+                // Membaca nama cabang dari plugin Git
+                expression { env.GIT_BRANCH == 'origin/develop' }
             }
             steps {
                 echo 'Fase 2 (SIT): Cabang develop terdeteksi. Mengirim artefak ke server System Integration Testing...'
-                // Simulasi perintah pengiriman ke server SIT
                 bat 'echo Deploying to SIT Environment...'
             }
         }
 
         stage('Approval for Production') {
             when {
-                branch 'main'
+                // Gunakan origin/main atau origin/master sesuai nama cabang utamamu
+                expression { env.GIT_BRANCH == 'origin/main' } 
             }
             steps {
                 echo 'Menunggu otorisasi rilis...'
@@ -36,19 +22,10 @@ pipeline {
 
         stage('Deploy to Production') {
             when {
-                branch 'main'
+                expression { env.GIT_BRANCH == 'origin/main' }
             }
             steps {
                 echo 'Fase 3 (PROD): Cabang main terdeteksi. Mengirim artefak ke server utama...'
-                // Simulasi perintah pengiriman ke server Production
                 bat 'echo Deploying to Production Environment...'
             }
         }
-    }
-    
-    post {
-        always {
-            bat 'mvn clean'
-        }
-    }
-}
