@@ -1,51 +1,54 @@
 pipeline {
     agent any
 
+    tools {
+        maven 'Maven-3.9.16'
+    }
+
     stages {
-        stage('Preparation & Checkout') {
+        stage('Build & Unit Test') {
             steps {
-                echo 'Menyiapkan environment dan memeriksa dependensi...'
-                bat 'git --version'
+                echo 'Fase 1: Mengompilasi kode dan menjalankan pengujian otomatis...'
+                bat 'mvn clean package'
             }
         }
 
-        stage('Build Simulation') {
+        stage('Deploy to SIT') {
+            when {
+                branch 'develop'
+            }
             steps {
-                echo 'Menyimulasikan proses kompilasi kode aplikasi kanal digital...'
-                // Membuat direktori "target" dan sebuah file teks sebagai pengganti aplikasi sungguhan
-                bat 'mkdir target'
-                bat 'echo "Ini adalah hasil kompilasi aplikasi siap rilis" > target/app-release.txt'
+                echo 'Fase 2 (SIT): Cabang develop terdeteksi. Mengirim artefak ke server System Integration Testing...'
+                // Simulasi perintah pengiriman ke server SIT
+                bat 'echo Deploying to SIT Environment...'
             }
         }
 
-        stage('Security & Quality Gate') {
+        stage('Approval for Production') {
+            when {
+                branch 'main'
+            }
             steps {
-                echo 'Menjalankan pemindaian kualitas dan keamanan statis (Dummy)...'
-                // Memastikan file hasil build benar-benar tercipta
-                bat 'dir target'
+                echo 'Menunggu otorisasi rilis...'
+                input message: 'Validasi artefak siap? Setujui deployment ke server Production?', ok: 'Deploy Sekarang'
             }
         }
 
-        stage('Archive Artifact') {
+        stage('Deploy to Production') {
+            when {
+                branch 'main'
+            }
             steps {
-                echo 'Menyimpan berkas siap rilis ke dalam brankas (Artifacts) Jenkins...'
-                // Menginstruksikan Jenkins untuk mengamankan file hasil kompilasi
-                archiveArtifacts artifacts: 'target/*.txt', allowEmptyArchive: false
+                echo 'Fase 3 (PROD): Cabang main terdeteksi. Mengirim artefak ke server utama...'
+                // Simulasi perintah pengiriman ke server Production
+                bat 'echo Deploying to Production Environment...'
             }
         }
     }
-
-    // Blok post berjalan otomatis di akhir pipeline, bergantung pada hasil eksekusi tahapan di atas
+    
     post {
         always {
-            echo 'Membersihkan workspace sementara agar siap untuk siklus build berikutnya...'
-            bat 'rmdir /s /q target'
-        }
-        success {
-            echo 'STATUS: LULUS UJI! Artefak aplikasi berhasil diamankan dan siap dipindahkan ke server lab.'
-        }
-        failure {
-            echo 'STATUS: GAGAL! Eksekusi dihentikan. Segera periksa log tahap yang bermasalah.'
+            bat 'mvn clean'
         }
     }
 }
