@@ -1,6 +1,20 @@
-stage('Deploy to SIT') {
+pipeline {
+    agent any
+
+    tools {
+        maven 'Maven3'
+    }
+
+    stages {
+        stage('Build & Unit Test') {
+            steps {
+                echo 'Fase 1: Mengompilasi kode dan menjalankan pengujian otomatis...'
+                bat 'mvn clean package'
+            }
+        }
+
+        stage('Deploy to SIT') {
             when {
-                // Membaca nama cabang dari plugin Git
                 expression { env.GIT_BRANCH == 'origin/develop' }
             }
             steps {
@@ -11,7 +25,6 @@ stage('Deploy to SIT') {
 
         stage('Approval for Production') {
             when {
-                // Gunakan origin/main atau origin/master sesuai nama cabang utamamu
                 expression { env.GIT_BRANCH == 'origin/main' } 
             }
             steps {
@@ -29,3 +42,11 @@ stage('Deploy to SIT') {
                 bat 'echo Deploying to Production Environment...'
             }
         }
+    }
+    
+    post {
+        always {
+            bat 'mvn clean'
+        }
+    }
+}
