@@ -36,13 +36,13 @@ pipeline {
         }
 
         stage('Deploy to Production') {
-            when {
-                expression { env.GIT_BRANCH == 'origin/main' }
-            }
-            steps {
-                echo 'Fase 3 (PROD): Cabang main terdeteksi. Mengirim artefak ke server utama...'
-                bat 'echo Deploying to Production Environment...'
-            }
+        when {
+            expression { env.GIT_BRANCH == 'origin/main' }
+        }
+        steps {
+            echo 'Fase 3 (PROD): Mengirim artefak ke server utama...'
+            bat 'C:\\Windows\\System32\\xcopy.exe target\\*.jar C:\\Server-Prod-Dummy\\ /Y /I'
+            echo 'Deployment ke Production berhasil!'
         }
     }
     
