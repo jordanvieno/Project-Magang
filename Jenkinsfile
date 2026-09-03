@@ -13,20 +13,21 @@ pipeline {
             }
         }
 
-        stage('Deploy to SIT') {
+       stage('Deploy to SIT') {
             when {
-                branch 'develop'
+                expression { env.GIT_BRANCH == 'origin/develop' }
             }
             steps {
-                echo 'Fase 2 (SIT): Cabang develop terdeteksi. Mengirim artefak ke server System Integration Testing...'
-                // Simulasi perintah pengiriman ke server SIT
-                bat 'echo Deploying to SIT Environment...'
+                echo 'Fase 2 (SIT): Mengirim artefak ke server System Integration Testing...'
+                // Menggunakan jalur absolut C:\Windows\System32\xcopy.exe
+                bat 'C:\\Windows\\System32\\xcopy.exe target\\*.jar C:\\Server-SIT-Dummy\\ /Y /I'
+                echo 'Deployment ke SIT berhasil!'
             }
         }
 
         stage('Approval for Production') {
             when {
-                branch 'main'
+                expression { env.GIT_BRANCH == 'origin/main' } 
             }
             steps {
                 echo 'Menunggu otorisasi rilis...'
@@ -35,14 +36,13 @@ pipeline {
         }
 
         stage('Deploy to Production') {
-            when {
-                branch 'main'
-            }
-            steps {
-                echo 'Fase 3 (PROD): Cabang main terdeteksi. Mengirim artefak ke server utama...'
-                // Simulasi perintah pengiriman ke server Production
-                bat 'echo Deploying to Production Environment...'
-            }
+        when {
+            expression { env.GIT_BRANCH == 'origin/main' }
+        }
+        steps {
+            echo 'Fase 3 (PROD): Mengirim artefak ke server utama...'
+            bat 'C:\\Windows\\System32\\xcopy.exe target\\*.jar C:\\Server-Prod-Dummy\\ /Y /I'
+            echo 'Deployment ke Production berhasil!'
         }
     }
     
