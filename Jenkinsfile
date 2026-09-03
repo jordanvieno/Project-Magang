@@ -13,13 +13,15 @@ pipeline {
             }
         }
 
-        stage('Deploy to SIT') {
+       stage('Deploy to SIT') {
             when {
                 expression { env.GIT_BRANCH == 'origin/develop' }
             }
             steps {
-                echo 'Fase 2 (SIT): Cabang develop terdeteksi. Mengirim artefak ke server System Integration Testing...'
-                bat 'echo Deploying to SIT Environment...'
+                echo 'Fase 2 (SIT): Mengirim artefak ke server System Integration Testing...'
+                // Perintah Windows untuk menyalin fail .jar ke folder dummy
+                bat 'xcopy target\\*.jar C:\\Server-SIT-Dummy\\ /Y /I'
+                echo 'Deployment ke SIT berhasil!'
             }
         }
 
