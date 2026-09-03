@@ -23,10 +23,10 @@ pipeline {
                 bat 'echo Deploying to SIT Environment...'
             }
         }
-
-        stage('Approval for Production') {
+stage('Approval for Production') {
             when {
-                branch 'main'
+                // Fleksibel mendeteksi nama cabang yang berakhiran 'main'
+                expression { env.GIT_BRANCH != null && env.GIT_BRANCH.endsWith('main') }
             }
             steps {
                 echo 'Menunggu otorisasi rilis...'
@@ -36,12 +36,12 @@ pipeline {
 
         stage('Deploy to Production') {
             when {
-                branch 'main'
+                expression { env.GIT_BRANCH != null && env.GIT_BRANCH.endsWith('main') }
             }
             steps {
-                echo 'Fase 3 (PROD): Cabang main terdeteksi. Mengirim artefak ke server utama...'
-                // Simulasi perintah pengiriman ke server Production
-                bat 'echo Deploying to Production Environment...'
+                echo 'Fase 3 (PROD): Mengirim artefak ke server utama...'
+                bat 'C:\\Windows\\System32\\xcopy.exe target\\*.jar C:\\Server-Prod-Dummy\\ /Y /I'
+                echo 'Deployment ke Production berhasil!'
             }
         }
     }
