@@ -19,8 +19,8 @@ pipeline {
             }
             steps {
                 echo 'Fase 2 (SIT): Mengirim artefak ke server System Integration Testing...'
-                // Perintah Windows untuk menyalin fail .jar ke folder dummy
-                bat 'xcopy target\\*.jar C:\\Server-SIT-Dummy\\ /Y /I'
+                // Menggunakan jalur absolut C:\Windows\System32\xcopy.exe
+                bat 'C:\\Windows\\System32\\xcopy.exe target\\*.jar C:\\Server-SIT-Dummy\\ /Y /I'
                 echo 'Deployment ke SIT berhasil!'
             }
         }
