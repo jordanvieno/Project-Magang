@@ -71,9 +71,24 @@ pipeline {
         }
     }
     
-    post {
+   post {
+        success {
+            echo '=================================================='
+            echo ' [NOTIFIKASI ENTERPRISE]: Rilis Berhasil!'
+            echo ' Status: Pipeline sukses melewati Quality Gate & Deploy.'
+            echo ' Target: Backend (APP), Frontend (WEB), & Docker (TKGI) aman.'
+            echo '=================================================='
+        }
+        failure {
+            echo '=================================================='
+            echo ' [NOTIFIKASI ENTERPRISE]: Rilis GAGAL!'
+            echo ' Status: Terdeteksi kesalahan pada kompilasi atau uji coba.'
+            echo ' Tindakan: Harap segera periksa log error di Jenkins.'
+            echo '=================================================='
+        }
         always {
+            echo ' Membersihkan workspace lokal...'
             bat 'mvn clean'
         }
     }
-}
+    }
