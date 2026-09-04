@@ -14,25 +14,22 @@ pipeline {
                         bat 'mvn clean package'
                     }
                 }
-                
-        // TAHAP BARU: Membungkus aplikasi menjadi kontainer untuk TKGI
+                stage('Frontend Build (Node.js/NPM)') {
+                    steps {
+                        echo 'Fase 1B: Menyimulasikan bundling aset UI React/Angular...'
+                        bat 'if not exist build mkdir build'
+                        bat 'echo Antarmuka Agen46 BNI (Rilis Versi %BUILD_NUMBER%) > build\\index.html'
+                    }
+                }
+            }
+        }
+
+        // TAHAP BARU: Membungkus aplikasi menjadi kontainer untuk TKGI diletakkan di LUAR blok parallel
         stage('Containerization (Docker Build)') {
             steps {
                 echo 'Fase 1C: Membungkus artefak Backend menjadi Docker Image...'
                 // Mengeksekusi Dockerfile untuk membuat image bernama 'agen46-backend'
                 bat 'docker build -t agen46-backend:latest .'
-            }
-        }
-
-    }
-                stage('Frontend Build (Node.js/NPM)') {
-                    steps {
-                        echo 'Fase 1B: Menyimulasikan bundling aset UI React/Angular...'
-                        bat 'if not exist build mkdir build'
-                        // Menyisipkan variabel %BUILD_NUMBER% agar isi konten berubah setiap kali pipeline dijalankan
-                        bat 'echo Antarmuka Agen46 BNI (Rilis Versi %BUILD_NUMBER%) > build\\index.html'
-                    }
-                }
             }
         }
 
@@ -65,7 +62,6 @@ pipeline {
                 bat 'C:\\Windows\\System32\\xcopy.exe target\\*.jar C:\\Server-Prod-Dummy\\ /Y /I'
                 
                 echo 'Fase 3B (PROD): Mengirim aset statis Frontend ke klaster WEB...'
-                // Mengambil file dari folder 'build' yang baru
                 bat 'C:\\Windows\\System32\\xcopy.exe build\\* C:\\Server-WEB-Dummy\\ /Y /I /E'
                 
                 echo 'Deployment menyeluruh ke Production berhasil!'
@@ -78,3 +74,4 @@ pipeline {
             bat 'mvn clean'
         }
     }
+}
