@@ -74,7 +74,7 @@ pipeline {
                 echo 'Deployment menyeluruh ke Production berhasil dan server telah menyala!'
             }
         }
-    
+    }
    post {
         success {
             echo '=================================================='
