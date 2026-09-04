@@ -17,9 +17,9 @@ pipeline {
                 stage('Frontend Build (Node.js/NPM)') {
                     steps {
                         echo 'Fase 1B: Menyimulasikan bundling aset UI React/Angular...'
-                        // Menggunakan folder 'build' yang terpisah dari folder 'target' Maven
                         bat 'if not exist build mkdir build'
-                        bat 'echo Antarmuka Agen46 BNI > build\\index.html'
+                        // Menyisipkan variabel %BUILD_NUMBER% agar isi konten berubah setiap kali pipeline dijalankan
+                        bat 'echo Antarmuka Agen46 BNI (Rilis Versi %BUILD_NUMBER%) > build\\index.html'
                     }
                 }
             }
