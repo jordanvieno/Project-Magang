@@ -60,16 +60,20 @@ pipeline {
                 expression { env.GIT_BRANCH != null && env.GIT_BRANCH.endsWith('main') }
             }
             steps {
-                echo 'Fase 3A (PROD): Mengirim JAR Backend ke klaster APP...'
-                bat 'C:\\Windows\\System32\\xcopy.exe target\\*.jar C:\\Server-Prod-Dummy\\ /Y /I'
+                echo 'Fase 3A (PROD): Menjalankan Backend di Kontainer Lokal (Simulasi TKGI)...'
+                // Mematikan kontainer lama jika ada agar tidak bentrok
+                bat 'docker rm -f agen46-app-server || exit 0'
+                // Menyalakan kontainer baru dari image yang baru saja dibuat di port 8080
+                bat 'docker run -d -p 8080:8080 --name agen46-app-server agen46-backend:latest'
                 
-                echo 'Fase 3B (PROD): Mengirim aset statis Frontend ke klaster WEB...'
-                bat 'C:\\Windows\\System32\\xcopy.exe build\\* C:\\Server-WEB-Dummy\\ /Y /I /E'
+                echo 'Fase 3B (PROD): Menyalakan Nginx Web Server untuk Frontend (Simulasi WEB Cluster)...'
+                bat 'docker rm -f agen46-web-server || exit 0'
+                // Memasang folder 'build' milikmu ke dalam web server Nginx di port 80
+                bat 'docker run -d -p 80:80 --name agen46-web-server -v "%WORKSPACE%\\build":/usr/share/nginx/html nginx:alpine'
                 
-                echo 'Deployment menyeluruh ke Production berhasil!'
+                echo 'Deployment menyeluruh ke Production berhasil dan server telah menyala!'
             }
         }
-    }
     
    post {
         success {
@@ -92,3 +96,4 @@ pipeline {
         }
     }
     }
+}
