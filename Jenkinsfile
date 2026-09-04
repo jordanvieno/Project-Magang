@@ -5,8 +5,7 @@ pipeline {
         maven 'maven-3.9.9'
     }
 
-    stages {
-        stage('Build & Unit Test') {
+   stage('Build & Unit Test') {
             parallel {
                 stage('Backend Build (Maven)') {
                     steps {
@@ -17,9 +16,9 @@ pipeline {
                 stage('Frontend Build (Node.js/NPM)') {
                     steps {
                         echo 'Fase 1B: Menyimulasikan bundling aset UI React/Angular...'
-                        // Membuat folder simulasi hasil npm run build
-                        bat 'if not exist target\\frontend_build mkdir target\\frontend_build'
-                        bat 'echo Antarmuka Agen46 BNI > target\\frontend_build\\index.html'
+                        // Menggunakan folder 'build' yang terpisah dari folder 'target' Maven
+                        bat 'if not exist build mkdir build'
+                        bat 'echo Antarmuka Agen46 BNI > build\\index.html'
                     }
                 }
             }
@@ -55,14 +54,14 @@ pipeline {
                 bat 'C:\\Windows\\System32\\xcopy.exe target\\*.jar C:\\Server-Prod-Dummy\\ /Y /I'
                 
                 echo 'Fase 3B (PROD): Mengirim aset statis Frontend ke klaster WEB...'
-                // Parameter /E menyalin seluruh subdirektori (simulasi distribusi file web)
-                bat 'C:\\Windows\\System32\\xcopy.exe target\\frontend_build\\* C:\\Server-WEB-Dummy\\ /Y /I /E'
+                // Mengambil file dari folder 'build' yang baru
+                bat 'C:\\Windows\\System32\\xcopy.exe build\\* C:\\Server-WEB-Dummy\\ /Y /I /E'
                 
                 echo 'Deployment menyeluruh ke Production berhasil!'
             }
         }
     }
-    }
+    
     
     post {
         always {
