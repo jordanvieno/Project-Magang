@@ -14,6 +14,17 @@ pipeline {
                         bat 'mvn clean package'
                     }
                 }
+                
+        // TAHAP BARU: Membungkus aplikasi menjadi kontainer untuk TKGI
+        stage('Containerization (Docker Build)') {
+            steps {
+                echo 'Fase 1C: Membungkus artefak Backend menjadi Docker Image...'
+                // Mengeksekusi Dockerfile untuk membuat image bernama 'agen46-backend'
+                bat 'docker build -t agen46-backend:latest .'
+            }
+        }
+
+    }
                 stage('Frontend Build (Node.js/NPM)') {
                     steps {
                         echo 'Fase 1B: Menyimulasikan bundling aset UI React/Angular...'
