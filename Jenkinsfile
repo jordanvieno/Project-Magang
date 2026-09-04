@@ -69,4 +69,3 @@ pipeline {
             bat 'mvn clean'
         }
     }
-}
