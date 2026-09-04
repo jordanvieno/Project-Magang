@@ -1,5 +1,5 @@
-# 1. Gunakan sistem operasi dasar yang sudah dilengkapi Java
-FROM openjdk:21-jdk-slim
+# 1. Gunakan sistem operasi dasar alpine yang sangat ringan dengan Java 21
+FROM eclipse-temurin:21-jre-alpine
 
 # 2. Buat folder /app di dalam kontainer
 WORKDIR /app
