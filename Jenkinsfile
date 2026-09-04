@@ -5,7 +5,8 @@ pipeline {
         maven 'maven-3.9.9'
     }
 
-   stage('Build & Unit Test') {
+   stage {
+       ('Build & Unit Test') {
             parallel {
                 stage('Backend Build (Maven)') {
                     steps {
@@ -13,7 +14,8 @@ pipeline {
                         bat 'mvn clean package'
                     }
                 }
-                stage('Frontend Build (Node.js/NPM)') {
+                stage {
+                    ('Frontend Build (Node.js/NPM)') {
                     steps {
                         echo 'Fase 1B: Menyimulasikan bundling aset UI React/Angular...'
                         // Menggunakan folder 'build' yang terpisah dari folder 'target' Maven
@@ -25,7 +27,8 @@ pipeline {
         }
 
         // (Biarkan tahap Deploy to SIT dan Approval for Production tetap seperti sebelumnya)
-        stage('Deploy to SIT') {
+        stage {
+            ('Deploy to SIT') {
             when {
                 expression { env.GIT_BRANCH == 'origin/develop' }
             }
@@ -35,7 +38,8 @@ pipeline {
             }
         }
 
-        stage('Approval for Production') {
+        stage {
+            ('Approval for Production') {
             when {
                 expression { env.GIT_BRANCH != null && env.GIT_BRANCH.endsWith('main') }
             }
@@ -45,7 +49,8 @@ pipeline {
             }
         }
 
-        stage('Deploy to Production') {
+        stage {
+            ('Deploy to Production') {
             when {
                 expression { env.GIT_BRANCH != null && env.GIT_BRANCH.endsWith('main') }
             }
