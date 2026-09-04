@@ -14,18 +14,28 @@ pipeline {
                         bat 'mvn clean package'
                     }
                 }
+                
+        // TAHAP BARU: Membungkus aplikasi menjadi kontainer untuk TKGI
+        stage('Containerization (Docker Build)') {
+            steps {
+                echo 'Fase 1C: Membungkus artefak Backend menjadi Docker Image...'
+                // Mengeksekusi Dockerfile untuk membuat image bernama 'agen46-backend'
+                bat 'docker build -t agen46-backend:latest .'
+            }
+        }
+
+    }
                 stage('Frontend Build (Node.js/NPM)') {
                     steps {
                         echo 'Fase 1B: Menyimulasikan bundling aset UI React/Angular...'
-                        // Membuat folder simulasi hasil npm run build
-                        bat 'if not exist target\\frontend_build mkdir target\\frontend_build'
-                        bat 'echo Antarmuka Agen46 BNI > target\\frontend_build\\index.html'
+                        bat 'if not exist build mkdir build'
+                        // Menyisipkan variabel %BUILD_NUMBER% agar isi konten berubah setiap kali pipeline dijalankan
+                        bat 'echo Antarmuka Agen46 BNI (Rilis Versi %BUILD_NUMBER%) > build\\index.html'
                     }
                 }
             }
         }
 
-        // (Biarkan tahap Deploy to SIT dan Approval for Production tetap seperti sebelumnya)
         stage('Deploy to SIT') {
             when {
                 expression { env.GIT_BRANCH == 'origin/develop' }
@@ -55,8 +65,8 @@ pipeline {
                 bat 'C:\\Windows\\System32\\xcopy.exe target\\*.jar C:\\Server-Prod-Dummy\\ /Y /I'
                 
                 echo 'Fase 3B (PROD): Mengirim aset statis Frontend ke klaster WEB...'
-                // Parameter /E menyalin seluruh subdirektori (simulasi distribusi file web)
-                bat 'C:\\Windows\\System32\\xcopy.exe target\\frontend_build\\* C:\\Server-WEB-Dummy\\ /Y /I /E'
+                // Mengambil file dari folder 'build' yang baru
+                bat 'C:\\Windows\\System32\\xcopy.exe build\\* C:\\Server-WEB-Dummy\\ /Y /I /E'
                 
                 echo 'Deployment menyeluruh ke Production berhasil!'
             }
