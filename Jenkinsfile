@@ -31,7 +31,7 @@ pipeline {
             steps {
                 echo 'Fase 1C: Membungkus artefak Backend menjadi Docker Image...'
                 // Mengeksekusi Dockerfile untuk membuat image bernama 'agen46-backend'
-                bat 'docker build -t agen46-backend:latest .'
+                bat 'docker build --no-cache -t agen46-backend:latest .'
             }
         }
 
@@ -92,3 +92,4 @@ pipeline {
         }
     }
     }
+}
