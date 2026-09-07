@@ -1,6 +1,6 @@
 pipeline {
     agent any
-    paramaters {
+    parameters {
         choice(name: 'DEPLOY_ACTION', choices:[Release, Rollback], description: 'pilih jenis rilis di production')
         string(name: 'APP_VERSION', defaultValue: 'latest', description: 'Masukkan versi target (contoh: v.2.0 untuk rilis, atau v.1.9 untuk rollback)')
     }
