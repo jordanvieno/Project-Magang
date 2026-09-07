@@ -52,13 +52,11 @@ pipeline {
             }
         }
 
-        stage('Deploy to SIT') {
-            when {
-                expression { env.GIT_BRANCH == 'origin/develop' }
-            }
+       stage('Deploy to SIT') {
             steps {
                 echo 'Fase 2 (SIT): Mengirim artefak ke server System Integration Testing...'
-
+                
+                // Menyuntikkan kredensial secara aman ke dalam lingkungan eksekusi
                 withCredentials([string(credentialsId: 'AGEN46_API_KEY', variable: 'SECRET_TOKEN')]) {
                     bat '''
                     echo [OTENTIKASI] Mencoba terhubung ke server SIT dengan API Token rahasia...
