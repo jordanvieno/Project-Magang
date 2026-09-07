@@ -11,9 +11,9 @@ pipeline {
         stage('Security Code Scan (SAST)') {
             steps {
                 echo 'Fase 0: Analisis Kualitas & Keamanan Kode (Simulasi SonarQube)...'
+                bat '''
                 echo ========================================================
-                // Gunakan ^& agar ampersand dibaca sebagai teks biasa
-                echo [SAST SCANNER] Memindai repositori Payment ^& Integration System...
+                echo [SAST SCANNER] Memindai repositori Payment & Integration System...
                 echo [*] Mengecek Hardcoded Secrets / Passwords... AMAN
                 echo [*] Mengecek SQL Injection Vulnerabilities... AMAN
                 echo [*] Mengecek standar Log Enterprise... AMAN
