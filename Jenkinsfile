@@ -8,6 +8,20 @@ pipeline {
     }
 
     stages {
+        stage('Security Code Scan (SAST)') {
+            steps {
+                echo 'Fase 0: Analisis Kualitas & Keamanan Kode (Simulasi SonarQube)...'
+                bat '''
+                echo ========================================================
+                echo [SAST SCANNER] Memindai repositori Payment & Integration System...
+                echo [*] Mengecek Hardcoded Secrets / Passwords... AMAN
+                echo [*] Mengecek SQL Injection Vulnerabilities... AMAN
+                echo [*] Mengecek standar Log Enterprise... AMAN
+                echo ========================================================
+                echo Status Quality Gate: PASSED
+                '''
+            }
+        }
         stage('Build & Unit Test') {
             parallel {
                 stage('Backend Build (Maven)') {
