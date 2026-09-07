@@ -1,7 +1,7 @@
 pipeline {
     agent any
     parameters {
-        choice(name: 'DEPLOY_ACTION', choices:['Release', 'Rollback'], description: 'pilih jenis rilis di production')
+        choice(name: 'DEPLOY_ACTION', choices: ['Release', 'Rollback'], description: 'pilih jenis rilis di production')
         string(name: 'APP_VERSION', defaultValue: 'latest', description: 'Masukkan versi target (contoh: v.2.0 untuk rilis, atau v.1.9 untuk rollback)')
     }
     environment {
@@ -26,6 +26,7 @@ pipeline {
                 '''
             }
         }
+
         stage('Build & Unit Test') {
             parallel {
                 stage('Backend Build (Maven)') {
@@ -44,11 +45,9 @@ pipeline {
             }
         }
 
-        // TAHAP BARU: Membungkus aplikasi menjadi kontainer untuk TKGI diletakkan di LUAR blok parallel
         stage('Containerization (Docker Build)') {
             steps {
                 echo 'Fase 1C: Membungkus artefak Backend menjadi Docker Image...'
-                // Mengeksekusi Dockerfile untuk membuat image bernama 'agen46-backend'
                 bat 'docker build --no-cache -t agen46-backend:latest .'
             }
         }
@@ -59,10 +58,7 @@ pipeline {
             }
             steps {
                 echo 'Fase 2 (SIT): Mengirim artefak ke server System Integration Testing...'
-                bat 'C:\\Windows\\System32\\xcopy.exe target\\*.jar C:\\Server-SIT-Dummy\\ /Y /I'
-                echo 'Fase 2 (SIT): Mengirim artefak ke server System Integration Testing...'
-                
-                // Menyuntikkan kredensial secara aman ke dalam lingkungan eksekusi
+
                 withCredentials([string(credentialsId: 'AGEN46_API_KEY', variable: 'SECRET_TOKEN')]) {
                     bat '''
                     echo [OTENTIKASI] Mencoba terhubung ke server SIT dengan API Token rahasia...
@@ -70,6 +66,7 @@ pipeline {
                     echo [OTENTIKASI] Akses Diberikan. Memulai transfer file...
                     C:\\Windows\\System32\\xcopy.exe target\\*.jar C:\\Server-SIT-Dummy\\ /Y /I
                     '''
+                }
             }
         }
 
@@ -89,20 +86,20 @@ pipeline {
             }
             steps {
                 echo "Fase 3A (PROD): Mengeksekusi perintah [${params.DEPLOY_ACTION}] untuk versi [${params.APP_VERSION}]..."
-                // Menyimulasikan penerapan manifest Kubernetes ke cluster
                 bat 'echo [KUBERNETES] Mengeksekusi: kubectl apply -f k8s\\backend-deployment.yaml'
                 bat 'echo deployment.apps/agen46-backend-deployment created'
                 bat 'echo service/agen46-backend-service created'
-                
+
                 echo 'Fase 3B (PROD): Menyalakan Nginx Web Server untuk Frontend (Simulasi WEB Cluster)...'
                 bat 'docker rm -f agen46-web-server || exit 0'
                 bat 'docker run -d -p 80:80 --name agen46-web-server -v "%WORKSPACE%\\build":/usr/share/nginx/html nginx:alpine'
-                
+
                 echo 'Deployment menyeluruh ke Production berhasil disimulasikan!'
             }
         }
     }
-   post {
+
+    post {
         success {
             echo '=================================================='
             echo ' [NOTIFIKASI ENTERPRISE]: Rilis Berhasil!'
@@ -118,9 +115,8 @@ pipeline {
             echo '=================================================='
         }
         always {
-            echo ' Membersihkan workspace lokal...'
+            echo 'Membersihkan workspace lokal...'
             bat 'mvn clean'
         }
-    }
     }
 }
