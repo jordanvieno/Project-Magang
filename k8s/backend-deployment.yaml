@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agen46-backend-deployment
+  labels:
+    app: agen46-backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: agen46-backend
+  template:
+    metadata:
+      labels:
+        app: agen46-backend
+    spec:
+      containers:
+        - name: agen46-backend
+          image: agen46-backend:latest
+          ports:
+            - containerPort: 8080
+          imagePullPolicy: Never
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agen46-backend-service
+spec:
+  type: NodePort
+  selector:
+    app: agen46-backend
+  ports:
+    - port: 8080
+      targetPort: 8080
+      nodePort: 30080

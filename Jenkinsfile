@@ -74,18 +74,17 @@ pipeline {
                 expression { env.GIT_BRANCH != null && env.GIT_BRANCH.endsWith('main') }
             }
             steps {
-                echo 'Fase 3A (PROD): Menjalankan Backend di Kontainer Lokal (Simulasi TKGI)...'
-                // Mematikan kontainer lama jika ada agar tidak bentrok
-                bat 'docker rm -f agen46-app-server || exit 0'
-                // Menyalakan kontainer baru dari image yang baru saja dibuat di port 8080
-                bat 'docker run -d -p 8080:8080 --name agen46-app-server agen46-backend:latest'
+                echo 'Fase 3A (PROD): Simulasi Orkestrasi TKGI untuk Backend...'
+                // Menyimulasikan penerapan manifest Kubernetes ke cluster
+                bat 'echo [KUBERNETES] Mengeksekusi: kubectl apply -f k8s\\backend-deployment.yaml'
+                bat 'echo deployment.apps/agen46-backend-deployment created'
+                bat 'echo service/agen46-backend-service created'
                 
                 echo 'Fase 3B (PROD): Menyalakan Nginx Web Server untuk Frontend (Simulasi WEB Cluster)...'
                 bat 'docker rm -f agen46-web-server || exit 0'
-                // Memasang folder 'build' milikmu ke dalam web server Nginx di port 80
                 bat 'docker run -d -p 80:80 --name agen46-web-server -v "%WORKSPACE%\\build":/usr/share/nginx/html nginx:alpine'
                 
-                echo 'Deployment menyeluruh ke Production berhasil dan server telah menyala!'
+                echo 'Deployment menyeluruh ke Production berhasil disimulasikan!'
             }
         }
     }
