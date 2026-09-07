@@ -60,6 +60,16 @@ pipeline {
             steps {
                 echo 'Fase 2 (SIT): Mengirim artefak ke server System Integration Testing...'
                 bat 'C:\\Windows\\System32\\xcopy.exe target\\*.jar C:\\Server-SIT-Dummy\\ /Y /I'
+                echo 'Fase 2 (SIT): Mengirim artefak ke server System Integration Testing...'
+                
+                // Menyuntikkan kredensial secara aman ke dalam lingkungan eksekusi
+                withCredentials([string(credentialsId: 'AGEN46_API_KEY', variable: 'SECRET_TOKEN')]) {
+                    bat '''
+                    echo [OTENTIKASI] Mencoba terhubung ke server SIT dengan API Token rahasia...
+                    echo Mengirim otorisasi: %SECRET_TOKEN%
+                    echo [OTENTIKASI] Akses Diberikan. Memulai transfer file...
+                    C:\\Windows\\System32\\xcopy.exe target\\*.jar C:\\Server-SIT-Dummy\\ /Y /I
+                    '''
             }
         }
 
