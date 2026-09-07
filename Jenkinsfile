@@ -1,7 +1,7 @@
 pipeline {
     agent any
     parameters {
-        choice(name: 'DEPLOY_ACTION', choices:[Release, Rollback], description: 'pilih jenis rilis di production')
+        choice(name: 'DEPLOY_ACTION', choices:['Release', 'Rollback'], description: 'pilih jenis rilis di production')
         string(name: 'APP_VERSION', defaultValue: 'latest', description: 'Masukkan versi target (contoh: v.2.0 untuk rilis, atau v.1.9 untuk rollback)')
     }
     environment {
@@ -78,7 +78,7 @@ pipeline {
                 expression { env.GIT_BRANCH != null && env.GIT_BRANCH.endsWith('main') }
             }
             steps {
-                echo 'Fase 3A (PROD): Mengeksekusi perintah [${params.DEPLOY_ACTION}] untuk versi [${params.APP_VERSION}]...'
+                echo "Fase 3A (PROD): Mengeksekusi perintah [${params.DEPLOY_ACTION}] untuk versi [${params.APP_VERSION}]..."
                 // Menyimulasikan penerapan manifest Kubernetes ke cluster
                 bat 'echo [KUBERNETES] Mengeksekusi: kubectl apply -f k8s\\backend-deployment.yaml'
                 bat 'echo deployment.apps/agen46-backend-deployment created'
