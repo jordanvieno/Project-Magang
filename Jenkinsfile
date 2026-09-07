@@ -1,7 +1,7 @@
 pipeline {
     agent any
     triggers {
-        poll scm('* * * * *') 
+        pollSCM('* * * * *') 
     }
     parameters {
         choice(name: 'DEPLOY_ACTION', choices: ['Release', 'Rollback'], description: 'pilih jenis rilis di production')
