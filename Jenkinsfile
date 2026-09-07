@@ -1,7 +1,7 @@
 pipeline {
     agent any
     triggers {
-        githubPush()
+        poll scm('* * * * *') 
     }
     parameters {
         choice(name: 'DEPLOY_ACTION', choices: ['Release', 'Rollback'], description: 'pilih jenis rilis di production')
