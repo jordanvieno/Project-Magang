@@ -1,7 +1,7 @@
 pipeline {
     agent any
     triggers {
-        gitubPush()
+        githubPush()
     }
     parameters {
         choice(name: 'DEPLOY_ACTION', choices: ['Release', 'Rollback'], description: 'pilih jenis rilis di production')
