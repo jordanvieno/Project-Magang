@@ -60,7 +60,7 @@ pipeline {
                     echo [OTENTIKASI] Mencoba terhubung ke server SIT dengan API Token rahasia...
                     echo Mengirim otorisasi: %SECRET_TOKEN%
                     echo [OTENTIKASI] Akses Diberikan. Memulai transfer file...
-                    C:\\Windows\\System32\\xcopy.exe target\\java -jar target\*.jar C:\\Server-SIT-Dummy\\ /Y /I
+                    C:\\Windows\\System32\\xcopy.exe target\\java -jar target\\*.jar C:\\Server-SIT-Dummy\\ /Y /I
                     '''
                 }
             }
