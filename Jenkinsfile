@@ -48,6 +48,9 @@ pipeline {
         }
 
        stage('Deploy to SIT') {
+          when {
+                branch 'develop'
+            }
             steps {
                 echo 'Fase 2 (SIT): Mengirim artefak ke server System Integration Testing...'
                 
