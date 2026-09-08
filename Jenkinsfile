@@ -43,7 +43,7 @@ pipeline {
         stage('Containerization (Docker Build)') {
             steps {
                 echo 'Fase 1C: Membungkus artefak Backend menjadi Docker Image...'
-                bat 'docker build --no-cache -t agen46-backend:latest .'
+                bat 'docker build --no-cache -t agen46-backend:%BUILD_NUMBER% -t agen46-backend:latest .'
             }
         }
 
