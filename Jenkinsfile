@@ -67,6 +67,9 @@ pipeline {
         }
 
         stage('Automated Integration & API Test') {
+            when {
+                branch 'develop'
+            }
             steps {
                 echo 'Fase 2.5 (SIT Validation): Menjalankan Automated API Smoke Test...'
                 bat '''
