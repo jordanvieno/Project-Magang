@@ -113,6 +113,21 @@ pipeline {
                 echo 'Deployment menyeluruh ke Production berhasil disimulasikan!'
             }
         }
+
+        stage('Observability (Simulasi Splunk/ELK)') {
+            steps {
+                echo 'Fase 4 (MONITORING): Mengekspor metadata rilis ke Dasbor Operasional...'
+                bat """
+                echo ========================================================
+                echo [APM AGENT] Injeksi anotasi rilis versi [${params.APP_VERSION}] ke Splunk Indexer...
+                echo [APM AGENT] Sinkronisasi Log Transaksi H2H... CONNECTED
+                echo [*] Memantau latensi Production (Real-time Simulation)...
+                echo [*] Live Traffic Health: CPU 12%%, RAM 40%%, Error Rate 0.00%%
+                echo ========================================================
+                echo Status Observabilitas: ACTIVE - Anotasi rilis terekam.
+                """
+            }
+        }
     }
 
     post {
