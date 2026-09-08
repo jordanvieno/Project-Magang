@@ -80,7 +80,7 @@ pipeline {
 
         stage('Approval for Production') {
             when {
-                expression { env.GIT_BRANCH != null && env.GIT_BRANCH.endsWith('main') }
+                branch 'main'
             }
             steps {
                 echo 'Menunggu otorisasi rilis...'
@@ -90,7 +90,7 @@ pipeline {
 
         stage('Deploy to Production') {
             when {
-                expression { env.GIT_BRANCH != null && env.GIT_BRANCH.endsWith('main') }
+                branch 'main'
             }
             steps {
                 echo "Fase 3A (PROD): Mengeksekusi perintah [${params.DEPLOY_ACTION}] untuk versi [${params.APP_VERSION}]..."
