@@ -48,6 +48,9 @@ pipeline {
         }
 
        stage('Deploy to SIT') {
+          when {
+                branch 'develop'
+            }
             steps {
                 echo 'Fase 2 (SIT): Mengirim artefak ke server System Integration Testing...'
                 
@@ -64,6 +67,9 @@ pipeline {
         }
 
         stage('Automated Integration & API Test') {
+            when {
+                branch 'develop'
+            }
             steps {
                 echo 'Fase 2.5 (SIT Validation): Menjalankan Automated API Smoke Test...'
                 bat '''
@@ -80,7 +86,7 @@ pipeline {
 
         stage('Approval for Production') {
             when {
-                expression { env.GIT_BRANCH != null && env.GIT_BRANCH.endsWith('main') }
+                branch 'main'
             }
             steps {
                 echo 'Menunggu otorisasi rilis...'
@@ -90,7 +96,7 @@ pipeline {
 
         stage('Deploy to Production') {
             when {
-                expression { env.GIT_BRANCH != null && env.GIT_BRANCH.endsWith('main') }
+                branch 'main'
             }
             steps {
                 echo "Fase 3A (PROD): Mengeksekusi perintah [${params.DEPLOY_ACTION}] untuk versi [${params.APP_VERSION}]..."
