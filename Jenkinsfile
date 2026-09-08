@@ -49,7 +49,7 @@ pipeline {
 
        stage('Deploy to SIT') {
           when {
-                branch 'develop'
+                branch 'development'
             }
             steps {
                 echo 'Fase 2 (SIT): Mengirim artefak ke server System Integration Testing...'
@@ -68,7 +68,7 @@ pipeline {
 
         stage('Automated Integration & API Test') {
             when {
-                branch 'develop'
+                branch 'development'
             }
             steps {
                 echo 'Fase 2.5 (SIT Validation): Menjalankan Automated API Smoke Test...'
