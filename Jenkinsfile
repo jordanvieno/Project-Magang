@@ -61,7 +61,7 @@ pipeline {
         echo 'Deploy ke environment Development (container lokal)...'
         sh '''
         docker rm -f agen46-dev || true
-        docker run -d --name agen46-dev -p 8081:8080 -e APP_ENV=developmentlinux -e BUILD_NUMBER=${BUILD_NUMBER} ${IMAGE_NAME}:developmentlinux-latest
+        docker run -d --name agen46-dev -p 8081:8080 -e APP_ENV=development -e BUILD_NUMBER=${BUILD_NUMBER} ${IMAGE_NAME}:developmentlinux-latest
         '''
     }
 }

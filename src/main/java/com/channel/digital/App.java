@@ -24,7 +24,7 @@ public class App {
             case "testing":
                 color = "#f1c40f";
                 break;
-            case "developmen":
+            case "development":
                 color = "#e74c3c";
                 break;
             default:
