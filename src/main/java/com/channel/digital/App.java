@@ -9,7 +9,7 @@ import java.net.InetSocketAddress;
 
 public class App {
     public static void main(String[] args) throws IOException {
-        int port = 8080;
+        int port = 8081;
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
 
         String env = System.getenv("APP_ENV");
@@ -26,6 +26,9 @@ public class App {
                 break;
             case "development":
                 color = "#e74c3c";
+                break;
+            case "production-rollback-auto":
+                color = "#2b44c0";
                 break;
             default:
                 color = "#95a5a6";
