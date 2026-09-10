@@ -9,7 +9,7 @@ import java.net.InetSocketAddress;
 
 public class App {
     public static void main(String[] args) throws IOException {
-        int port = 8081;
+        int port = 8080;
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
 
         String env = System.getenv("APP_ENV");
