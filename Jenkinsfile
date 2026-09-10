@@ -13,8 +13,14 @@ pipeline {
         IMAGE_NAME = 'agen46-backend'
     }
 
+    parameters {
+        choice(name: 'DEPLOY_ACTION', choices: ['Release', 'Rollback'], description: 'Release = deploy versi terbaru, Rollback = kembali ke versi lama')
+        string(name: 'ROLLBACK_VERSION', defaultValue: '', description: 'Isi nomor build yang mau di-rollback (contoh: 6). Kosongkan kalau Release.')
+    }
+
     stages {
         stage('Security Code Scan (SAST)') {
+            when { expression { params.DEPLOY_ACTION != 'Rollback' } }
             steps {
                 echo 'Fase 0: Analisis Kualitas & Keamanan Kode (Simulasi SonarQube)...'
                 sh '''
@@ -29,6 +35,7 @@ pipeline {
         }
 
         stage('Build & Unit Test') {
+            when { expression { params.DEPLOY_ACTION != 'Rollback' } }
             parallel {
                 stage('Backend Build (Maven)') {
                     steps {
@@ -49,6 +56,7 @@ pipeline {
         }
 
         stage('Containerization (Docker Build)') {
+            when { expression { params.DEPLOY_ACTION != 'Rollback' } }
             steps {
                 echo 'Fase 1C: Membungkus artefak menjadi Docker Image...'
                 sh "docker build --no-cache -t ${IMAGE_NAME}:${BRANCH_NAME}-${BUILD_NUMBER} -t ${IMAGE_NAME}:${BRANCH_NAME}-latest ."
@@ -56,32 +64,40 @@ pipeline {
         }
 
         stage('Deploy to Development') {
-    when { branch 'developmentlinux' }
-    steps {
-        echo 'Deploy ke environment Development (container lokal)...'
-        sh '''
-        docker rm -f agen46-dev || true
-        docker run -d --name agen46-dev -p 8081:8080 -e APP_ENV=development -e BUILD_NUMBER=${BUILD_NUMBER} ${IMAGE_NAME}:${BRANCH_NAME}-latest
-        curl "http://localhost:9000/update?stage=development&build=${BUILD_NUMBER}"
-        '''
-    }
-}
+            when {
+                branch 'developmentlinux'
+                expression { params.DEPLOY_ACTION != 'Rollback' }
+            }
+            steps {
+                echo 'Deploy ke environment Development (container lokal)...'
+                sh '''
+                docker rm -f agen46-dev || true
+                docker run -d --name agen46-dev -p 8081:8080 -e APP_ENV=development -e BUILD_NUMBER=${BUILD_NUMBER} ${IMAGE_NAME}:${BRANCH_NAME}-latest
+                curl "http://localhost:9000/update?stage=development&build=${BUILD_NUMBER}"
+                '''
+            }
+        }
 
-stage('Deploy to Testing') {
-    when { branch 'testing' }
-    steps {
-        echo 'Deploy ke environment Testing/SIT (container lokal)...'
-        sh '''
-        docker rm -f agen46-testing || true
-        docker run -d --name agen46-testing -p 8082:8080 -e APP_ENV=testing -e BUILD_NUMBER=${BUILD_NUMBER} ${IMAGE_NAME}:${BRANCH_NAME}-latest
-        curl "http://localhost:9000/update?stage=development&build=${BUILD_NUMBER}"
-        '''
-    }
-}
-
+        stage('Deploy to Testing') {
+            when {
+                branch 'testing'
+                expression { params.DEPLOY_ACTION != 'Rollback' }
+            }
+            steps {
+                echo 'Deploy ke environment Testing/SIT (container lokal)...'
+                sh '''
+                docker rm -f agen46-testing || true
+                docker run -d --name agen46-testing -p 8082:8080 -e APP_ENV=testing -e BUILD_NUMBER=${BUILD_NUMBER} ${IMAGE_NAME}:testing-latest
+                curl "http://localhost:9000/update?stage=testing&build=${BUILD_NUMBER}"
+                '''
+            }
+        }
 
         stage('Approval for Production') {
-            when { branch 'production' }
+            when {
+                branch 'production'
+                expression { params.DEPLOY_ACTION != 'Rollback' }
+            }
             steps {
                 echo 'Menunggu otorisasi rilis ke Production...'
                 input message: 'Artefak sudah lolos Testing. Setujui deployment ke Production?', ok: 'Deploy Sekarang'
@@ -89,16 +105,27 @@ stage('Deploy to Testing') {
         }
 
         stage('Deploy to Production') {
-    when { branch 'production' }
-    steps {
-        echo 'Deploy ke environment Production (container lokal)...'
-        sh '''
-        docker rm -f agen46-prod || true
-        docker run -d --name agen46-prod -p 8083:8080 -e APP_ENV=production -e BUILD_NUMBER=${BUILD_NUMBER} ${IMAGE_NAME}:${BRANCH_NAME}-latest
-        curl "http://localhost:9000/update?stage=development&build=${BUILD_NUMBER}"
-        '''
-    }
-}
+            when { branch 'production' }
+            steps {
+                script {
+                    if (params.DEPLOY_ACTION == 'Rollback') {
+                        echo "ROLLBACK ke versi production-${params.ROLLBACK_VERSION}..."
+                        sh """
+                        docker rm -f agen46-prod || true
+                        docker run -d --name agen46-prod -p 8083:8080 -e APP_ENV=production -e BUILD_NUMBER=${params.ROLLBACK_VERSION} ${IMAGE_NAME}:production-${params.ROLLBACK_VERSION}
+                        curl "http://localhost:9000/update?stage=production-rollback&build=${params.ROLLBACK_VERSION}"
+                        """
+                    } else {
+                        echo 'Deploy ke environment Production (container lokal)...'
+                        sh """
+                        docker rm -f agen46-prod || true
+                        docker run -d --name agen46-prod -p 8083:8080 -e APP_ENV=production -e BUILD_NUMBER=${BUILD_NUMBER} ${IMAGE_NAME}:production-latest
+                        curl "http://localhost:9000/update?stage=production&build=${BUILD_NUMBER}"
+                        """
+                    }
+                }
+            }
+        }
     }
 
     post {
@@ -109,7 +136,11 @@ stage('Deploy to Testing') {
             echo "Pipeline GAGAL untuk branch: ${env.BRANCH_NAME}"
         }
         always {
-            sh 'mvn clean'
+            script {
+                if (params.DEPLOY_ACTION != 'Rollback') {
+                    sh 'mvn clean'
+                }
+            }
         }
     }
 }
