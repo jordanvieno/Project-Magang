@@ -165,7 +165,7 @@ pipeline {
         }
     }
 }
-
+    }
     post {
         success {
             echo "Pipeline sukses untuk branch: ${env.BRANCH_NAME}"
