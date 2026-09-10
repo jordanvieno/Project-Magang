@@ -56,7 +56,7 @@ pipeline {
         }
 
         stage('Deploy to Development') {
-    when { branch 'development' }
+    when { branch 'developmentlinux' }
     steps {
         echo 'Deploy ke environment Development (container lokal)...'
         sh '''
