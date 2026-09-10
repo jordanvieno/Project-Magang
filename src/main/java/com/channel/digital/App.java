@@ -7,15 +7,14 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 
-public class App
-{
-    public static void main( String[] args ) throws IOException
-    {
+public class App {
+    public static void main(String[] args) throws IOException {
         int port = 8080;
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
 
         String env = System.getenv("APP_ENV");
-        if (env == null) env = "unknown";
+        if (env == null)
+            env = "unknown";
 
         String color;
         switch (env) {
@@ -25,7 +24,7 @@ public class App
             case "testing":
                 color = "#f1c40f";
                 break;
-            case "development":
+            case "developmentlinux":
                 color = "#e74c3c";
                 break;
             default:
@@ -37,12 +36,13 @@ public class App
 
         server.createContext("/", exchange -> {
             String html = "<html>"
-                + "<head><title>Agen46 Backend</title></head>"
-                + "<body style='background-color:" + finalColor + "; color:white; font-family:sans-serif; text-align:center; padding-top:100px;'>"
-                + "<h1>Agen46 Backend</h1>"
-                + "<h2>Environment: " + finalEnv.toUpperCase() + "</h2>"
-                + "<p>Build: " + System.getenv().getOrDefault("BUILD_NUMBER", "N/A") + "</p>"
-                + "</body></html>";
+                    + "<head><title>Agen46 Backend</title></head>"
+                    + "<body style='background-color:" + finalColor
+                    + "; color:white; font-family:sans-serif; text-align:center; padding-top:100px;'>"
+                    + "<h1>Agen46 Backend</h1>"
+                    + "<h2>Environment: " + finalEnv.toUpperCase() + "</h2>"
+                    + "<p>Build: " + System.getenv().getOrDefault("BUILD_NUMBER", "N/A") + "</p>"
+                    + "</body></html>";
             exchange.getResponseHeaders().set("Content-Type", "text/html");
             exchange.sendResponseHeaders(200, html.getBytes().length);
             OutputStream os = exchange.getResponseBody();
