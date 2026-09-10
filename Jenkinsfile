@@ -105,28 +105,66 @@ pipeline {
         }
 
         stage('Deploy to Production') {
-            when { branch 'production' }
-            steps {
-                script {
-                    if (params.DEPLOY_ACTION == 'Rollback') {
-                        echo "ROLLBACK ke versi production-${params.ROLLBACK_VERSION}..."
-                        sh """
-                        docker rm -f agen46-prod || true
-                        docker run -d --name agen46-prod -p 8083:8080 -e APP_ENV=production -e BUILD_NUMBER=${params.ROLLBACK_VERSION} ${IMAGE_NAME}:production-${params.ROLLBACK_VERSION}
-                        curl "http://localhost:9000/update?stage=production-rollback&build=${params.ROLLBACK_VERSION}"
-                        """
+    when { branch 'production' }
+    steps {
+        script {
+            if (params.DEPLOY_ACTION == 'Rollback') {
+                echo "ROLLBACK MANUAL ke versi production-${params.ROLLBACK_VERSION}..."
+                sh """
+                docker rm -f agen46-prod || true
+                docker run -d --name agen46-prod -p 8083:8080 -e APP_ENV=production -e BUILD_NUMBER=${params.ROLLBACK_VERSION} ${IMAGE_NAME}:production-${params.ROLLBACK_VERSION}
+                curl "http://localhost:9000/update?stage=production-rollback&build=${params.ROLLBACK_VERSION}"
+                """
+            } else {
+                echo 'Deploy ke environment Production (container lokal)...'
+                sh """
+                docker rm -f agen46-prod || true
+                docker run -d --name agen46-prod -p 8083:8080 -e APP_ENV=production -e BUILD_NUMBER=${BUILD_NUMBER} ${IMAGE_NAME}:production-latest
+                """
+
+                echo 'Menunggu aplikasi siap, melakukan health check...'
+                def healthy = false
+                for (int i = 1; i <= 5; i++) {
+                    sleep(time: 3, unit: 'SECONDS')
+                    def statusCode = sh(
+                        script: "curl -s -o /dev/null -w '%{http_code}' http://localhost:8083/api/v1/payments/health || true",
+                        returnStdout: true
+                    ).trim()
+                    echo "Percobaan ${i}: HTTP status = ${statusCode}"
+                    if (statusCode == '200') {
+                        healthy = true
+                        break
+                    }
+                }
+
+                if (healthy) {
+                    echo "Health check LOLOS. Build ${BUILD_NUMBER} sekarang jadi versi stabil."
+                    sh """
+                    echo ${BUILD_NUMBER} > /var/lib/jenkins/agen46-last-stable-production.txt
+                    curl "http://localhost:9000/update?stage=production&build=${BUILD_NUMBER}"
+                    """
+                } else {
+                    echo "Health check GAGAL setelah 5 percobaan. Menjalankan AUTO-ROLLBACK..."
+                    def lastStable = sh(
+                        script: "cat /var/lib/jenkins/agen46-last-stable-production.txt 2>/dev/null || echo ''",
+                        returnStdout: true
+                    ).trim()
+
+                    if (lastStable == '') {
+                        error("Tidak ada versi stabil sebelumnya untuk rollback! Deployment dibatalkan, perlu intervensi manual.")
                     } else {
-                        echo 'Deploy ke environment Production (container lokal)...'
                         sh """
                         docker rm -f agen46-prod || true
-                        docker run -d --name agen46-prod -p 8083:8080 -e APP_ENV=production -e BUILD_NUMBER=${BUILD_NUMBER} ${IMAGE_NAME}:production-latest
-                        curl "http://localhost:9000/update?stage=production&build=${BUILD_NUMBER}"
+                        docker run -d --name agen46-prod -p 8083:8080 -e APP_ENV=production -e BUILD_NUMBER=${lastStable} ${IMAGE_NAME}:production-${lastStable}
+                        curl "http://localhost:9000/update?stage=production-rollback-auto&build=${lastStable}"
                         """
+                        error("Auto-rollback dijalankan ke build ${lastStable} karena health check build ${BUILD_NUMBER} gagal.")
                     }
                 }
             }
         }
     }
+}
 
     post {
         success {
