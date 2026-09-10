@@ -1,0 +1,4 @@
+FROM eclipse-temurin:21-jre-alpine
+WORKDIR /app
+COPY target/classes/com/channel/digital/StatusServer.class /app/com/channel/digital/StatusServer.class
+ENTRYPOINT ["java", "-cp", "/app", "com.channel.digital.StatusServer"]
