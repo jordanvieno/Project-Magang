@@ -61,7 +61,7 @@ pipeline {
         echo 'Deploy ke environment Development (container lokal)...'
         sh '''
         docker rm -f agen46-dev || true
-        docker run -d --name agen46-dev -p 8081:8080 -e APP_ENV=development -e BUILD_NUMBER=${BUILD_NUMBER} ${IMAGE_NAME}:developmentlinux-latest
+        docker run -d --name agen46-dev -p 8081:8080 -e APP_ENV=development -e BUILD_NUMBER=${BUILD_NUMBER} ${IMAGE_NAME}:${BRANCH_NAME}-latest
         '''
     }
 }
@@ -72,7 +72,7 @@ stage('Deploy to Testing') {
         echo 'Deploy ke environment Testing/SIT (container lokal)...'
         sh '''
         docker rm -f agen46-testing || true
-        docker run -d --name agen46-testing -p 8082:8080 -e APP_ENV=testing -e BUILD_NUMBER=${BUILD_NUMBER} ${IMAGE_NAME}:testing-latest
+        docker run -d --name agen46-testing -p 8082:8080 -e APP_ENV=testing -e BUILD_NUMBER=${BUILD_NUMBER} ${IMAGE_NAME}:${BRANCH_NAME}-latest
         '''
     }
 }
@@ -92,7 +92,7 @@ stage('Deploy to Testing') {
         echo 'Deploy ke environment Production (container lokal)...'
         sh '''
         docker rm -f agen46-prod || true
-        docker run -d --name agen46-prod -p 8083:8080 -e APP_ENV=production -e BUILD_NUMBER=${BUILD_NUMBER} ${IMAGE_NAME}:production-latest
+        docker run -d --name agen46-prod -p 8083:8080 -e APP_ENV=production -e BUILD_NUMBER=${BUILD_NUMBER} ${IMAGE_NAME}:${BRANCH_NAME}-latest
         '''
     }
 }
