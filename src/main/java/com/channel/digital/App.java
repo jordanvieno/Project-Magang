@@ -18,14 +18,14 @@ public class App {
 
         String color;
         switch (env) {
-            case "production":
-                color = "#2ecc71";
+            case "development":
+                color = "#e74c3c";
                 break;
             case "testing":
                 color = "#f1c40f";
                 break;
-            case "development":
-                color = "#e74c3c";
+            case "production":
+                color = "#2ecc71";
                 break;
             case "production-rollback-auto":
                 color = "#2b44c0";
