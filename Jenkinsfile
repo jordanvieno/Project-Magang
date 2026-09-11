@@ -177,7 +177,7 @@ pipeline {
     post {
         success {
             script {
-                withCredentials([string(credentialsId: 'Token_Bot_Telegram', variable: 'TG_TOKEN'), string(credentialsId: 'Telegram_Chat_ID', variable: 'TG_CHAT')]) {
+                withCredentials([string(credentialsId: 'Token_Bot_Telegram', variable: 'TG_TOKEN'), string(credentialsId: 'Telegram-Chat-ID', variable: 'TG_CHAT')]) {
                     sh """
                     curl -s -X POST "https://api.telegram.org/bot\${TG_TOKEN}/sendMessage" \
                         -d chat_id=\${TG_CHAT} \
@@ -189,7 +189,7 @@ pipeline {
         }
         failure {
             script {
-                withCredentials([string(credentialsId: 'Token_Bot_Telegram', variable: 'TG_TOKEN'), string(credentialsId: 'Telegram_Chat_ID', variable: 'TG_CHAT')]) {
+                withCredentials([string(credentialsId: 'Token_Bot_Telegram', variable: 'TG_TOKEN'), string(credentialsId: 'Telegram-Chat-ID', variable: 'TG_CHAT')]) {
                     sh """
                     curl -s -X POST "https://api.telegram.org/bot\${TG_TOKEN}/sendMessage" \
                         -d chat_id=\${TG_CHAT} \
