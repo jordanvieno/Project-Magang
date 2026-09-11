@@ -27,8 +27,11 @@ public class App {
             case "production":
                 color = "#2ecc71";
                 break;
+            case "production-rollback":
+                color = "#e67e22";
+                break;
             case "production-rollback-auto":
-                color = "#2b44c0";
+                color = "#3498db";
                 break;
             default:
                 color = "#95a5a6";
