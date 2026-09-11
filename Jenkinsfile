@@ -158,7 +158,7 @@ pipeline {
                                 docker run -d --name agen46-prod -p 8083:8080 -e APP_ENV=production -e BUILD_NUMBER=${lastStable} ${IMAGE_NAME}:production-${lastStable}
                                 curl "http://localhost:9000/update?stage=production-rollback-auto&build=${lastStable}"
                                 """
-                                withCredentials([string(credentialsId: 'Token_Bot_Telegram', variable: 'TG_TOKEN'), string(credentialsId: 'telegram-chat-id', variable: 'TG_CHAT')]) {
+                                withCredentials([string(credentialsId: 'Token_Bot_Telegram', variable: 'TG_TOKEN'), string(credentialsId: 'Telegram-Chat-ID', variable: 'TG_CHAT')]) {
                                     sh """
                                     curl -s -X POST "https://api.telegram.org/bot\${TG_TOKEN}/sendMessage" \
                                         -d chat_id=\${TG_CHAT} \
