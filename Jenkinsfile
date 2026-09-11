@@ -167,17 +167,34 @@ pipeline {
 }
     }
     post {
-        success {
-            echo "Pipeline sukses untuk branch: ${env.BRANCH_NAME}"
+    success {
+        script {
+            withCredentials([string(credentialsId: 'telegram-bot-token', variable: 'TG_TOKEN'), string(credentialsId: 'telegram-chat-id', variable: 'TG_CHAT')]) {
+                sh """
+                curl -s -X POST "https://api.telegram.org/bot\${TG_TOKEN}/sendMessage" \
+                    -d chat_id=\${TG_CHAT} \
+                    -d text="✅ Pipeline SUKSES — branch: ${env.BRANCH_NAME}, build: #${env.BUILD_NUMBER}"
+                """
+            }
         }
-        failure {
-            echo "Pipeline GAGAL untuk branch: ${env.BRANCH_NAME}"
+        echo "Pipeline sukses untuk branch: ${env.BRANCH_NAME}"
+    }
+    failure {
+        script {
+            withCredentials([string(credentialsId: 'telegram-bot-token', variable: 'TG_TOKEN'), string(credentialsId: 'telegram-chat-id', variable: 'TG_CHAT')]) {
+                sh """
+                curl -s -X POST "https://api.telegram.org/bot\${TG_TOKEN}/sendMessage" \
+                    -d chat_id=\${TG_CHAT} \
+                    -d text="❌ Pipeline GAGAL — branch: ${env.BRANCH_NAME}, build: #${env.BUILD_NUMBER}"
+                """
+            }
         }
-        always {
-            script {
-                if (params.DEPLOY_ACTION != 'Rollback') {
-                    sh 'mvn clean'
-                }
+        echo "Pipeline GAGAL untuk branch: ${env.BRANCH_NAME}"
+    }
+    always {
+        script {
+            if (params.DEPLOY_ACTION != 'Rollback') {
+                sh 'mvn clean'
             }
         }
     }
