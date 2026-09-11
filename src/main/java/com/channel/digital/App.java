@@ -4,6 +4,7 @@ import com.sun.net.httpserver.HttpServer;
 import com.sun.net.httpserver.HttpExchange;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 
@@ -44,16 +45,36 @@ public class App {
             String html = "<html>"
                     + "<head><title>Agen46 Backend</title></head>"
                     + "<body style='background-color:" + finalColor
-                    + "; color:white; font-family:sans-serif; text-align:center; padding-top:100px;'>"
+                    + "; color:white; font-family:sans-serif; text-align:center; padding-top:60px;'>"
                     + "<h1>Agen46 Backend</h1>"
                     + "<h2>Environment: " + finalEnv.toUpperCase() + "</h2>"
                     + "<p>Build: " + System.getenv().getOrDefault("BUILD_NUMBER", "N/A") + "</p>"
+                    + "<img src='/photo' style='max-width:400px; border:4px solid white; border-radius:8px; margin-top:20px;' />"
                     + "</body></html>";
             exchange.getResponseHeaders().set("Content-Type", "text/html");
             exchange.sendResponseHeaders(200, html.getBytes().length);
             OutputStream os = exchange.getResponseBody();
             os.write(html.getBytes());
             os.close();
+        });
+
+        server.createContext("/photo", exchange -> {
+            InputStream is = App.class.getResourceAsStream("/static/foto.jpg");
+            if (is == null) {
+                String notFound = "Gambar tidak ditemukan";
+                exchange.sendResponseHeaders(404, notFound.getBytes().length);
+                OutputStream os = exchange.getResponseBody();
+                os.write(notFound.getBytes());
+                os.close();
+                return;
+            }
+            byte[] imageBytes = is.readAllBytes();
+            exchange.getResponseHeaders().set("Content-Type", "image/jpeg");
+            exchange.sendResponseHeaders(200, imageBytes.length);
+            OutputStream os = exchange.getResponseBody();
+            os.write(imageBytes);
+            os.close();
+            is.close();
         });
 
         server.createContext("/api/v1/payments/health", exchange -> {
