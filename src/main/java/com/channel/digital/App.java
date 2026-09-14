@@ -1,7 +1,6 @@
 package com.channel.digital;
 
 import com.sun.net.httpserver.HttpServer;
-import com.sun.net.httpserver.HttpExchange;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -9,34 +8,30 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 
 public class App {
+
     public static void main(String[] args) throws IOException {
-        int port = 8080;
+        startServer(8080);
+    }
+
+    public static HttpServer startServer(int port) throws IOException {
+        HttpServer server = createServer(port);
+        server.setExecutor(null);
+        server.start();
+
+        String env = System.getenv().getOrDefault("APP_ENV", "unknown");
+        System.out.println("Agen46 Backend started on port " + port + " [ENV=" + env + "]");
+        return server;
+    }
+
+    public static HttpServer createServer(int port) throws IOException {
+        // ... ISI METHOD INI TETAP SAMA PERSIS SEPERTI SEBELUMNYA, TIDAK BERUBAH
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
 
         String env = System.getenv("APP_ENV");
         if (env == null)
             env = "unknown";
 
-        String color;
-        switch (env) {
-            case "development":
-                color = "#e74c3c";
-                break;
-            case "testing":
-                color = "#f1c40f";
-                break;
-            case "production":
-                color = "#2ecc71";
-                break;
-            case "production-rollback":
-                color = "#e67e22";
-                break;
-            case "production-rollback-auto":
-                color = "#3498db";
-                break;
-            default:
-                color = "#95a5a6";
-        }
+        String color = resolveColor(env);
 
         final String finalEnv = env;
         final String finalColor = color;
@@ -53,42 +48,56 @@ public class App {
                     + "</body></html>";
             exchange.getResponseHeaders().set("Content-Type", "text/html");
             exchange.sendResponseHeaders(200, html.getBytes().length);
-            OutputStream os = exchange.getResponseBody();
-            os.write(html.getBytes());
-            os.close();
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(html.getBytes());
+            }
         });
 
         server.createContext("/photo", exchange -> {
-            InputStream is = App.class.getResourceAsStream("/static/foto.jpg");
-            if (is == null) {
-                String notFound = "Gambar tidak ditemukan";
-                exchange.sendResponseHeaders(404, notFound.getBytes().length);
-                OutputStream os = exchange.getResponseBody();
-                os.write(notFound.getBytes());
-                os.close();
-                return;
+            try (InputStream is = App.class.getResourceAsStream("/static/foto.jpg")) {
+                if (is == null) {
+                    String notFound = "Gambar tidak ditemukan";
+                    exchange.sendResponseHeaders(404, notFound.getBytes().length);
+                    try (OutputStream os = exchange.getResponseBody()) {
+                        os.write(notFound.getBytes());
+                    }
+                    return;
+                }
+                byte[] imageBytes = is.readAllBytes();
+                exchange.getResponseHeaders().set("Content-Type", "image/jpeg");
+                exchange.sendResponseHeaders(200, imageBytes.length);
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(imageBytes);
+                }
             }
-            byte[] imageBytes = is.readAllBytes();
-            exchange.getResponseHeaders().set("Content-Type", "image/jpeg");
-            exchange.sendResponseHeaders(200, imageBytes.length);
-            OutputStream os = exchange.getResponseBody();
-            os.write(imageBytes);
-            os.close();
-            is.close();
         });
 
         server.createContext("/api/v1/payments/health", exchange -> {
             String response = "{\"status\":\"UP\",\"environment\":\"" + finalEnv + "\"}";
             exchange.getResponseHeaders().set("Content-Type", "application/json");
             exchange.sendResponseHeaders(200, response.getBytes().length);
-            OutputStream os = exchange.getResponseBody();
-            os.write(response.getBytes());
-            os.close();
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(response.getBytes());
+            }
         });
 
-        server.setExecutor(null);
-        server.start();
+        return server;
+    }
 
-        System.out.println("Agen46 Backend started on port " + port + " [ENV=" + finalEnv + "]");
+    static String resolveColor(String env) {
+        switch (env) {
+            case "development":
+                return "#e74c3c";
+            case "testing":
+                return "#f1c40f";
+            case "production":
+                return "#2ecc71";
+            case "production-rollback":
+                return "#e67e22";
+            case "production-rollback-auto":
+                return "#3498db";
+            default:
+                return "#95a5a6";
+        }
     }
 }

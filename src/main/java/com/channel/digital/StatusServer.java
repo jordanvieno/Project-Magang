@@ -12,6 +12,13 @@ public class StatusServer {
 
     public static void main(String[] args) throws IOException {
         int port = 9000;
+        HttpServer server = createServer(port);
+        server.setExecutor(null);
+        server.start();
+        System.out.println("Status dashboard started on port " + port);
+    }
+
+    public static HttpServer createServer(int port) throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
 
         server.createContext("/update", exchange -> {
@@ -30,33 +37,14 @@ public class StatusServer {
             currentBuild.set(build);
             String response = "OK";
             exchange.sendResponseHeaders(200, response.getBytes().length);
-            OutputStream os = exchange.getResponseBody();
-            os.write(response.getBytes());
-            os.close();
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(response.getBytes());
+            }
         });
 
         server.createContext("/", exchange -> {
             String stage = currentStage.get();
-            String color;
-            switch (stage) {
-                case "development":
-                    color = "#e74c3c";
-                    break;
-                case "testing":
-                    color = "#f1c40f";
-                    break;
-                case "production":
-                    color = "#2ecc71";
-                    break;
-                case "production-rollback":
-                    color = "#e67e22";
-                    break;
-                case "production-rollback-auto":
-                    color = "#3498db";
-                    break;
-                default:
-                    color = "#95a5a6";
-            }
+            String color = resolveColor(stage);
             String html = "<html><head><meta http-equiv='refresh' content='2'>"
                     + "<title>Pipeline Status</title></head>"
                     + "<body style='background-color:" + color
@@ -67,13 +55,28 @@ public class StatusServer {
                     + "</body></html>";
             exchange.getResponseHeaders().set("Content-Type", "text/html");
             exchange.sendResponseHeaders(200, html.getBytes().length);
-            OutputStream os = exchange.getResponseBody();
-            os.write(html.getBytes());
-            os.close();
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(html.getBytes());
+            }
         });
 
-        server.setExecutor(null);
-        server.start();
-        System.out.println("Status dashboard started on port " + port);
+        return server;
+    }
+
+    static String resolveColor(String stage) {
+        switch (stage) {
+            case "development":
+                return "#e74c3c";
+            case "testing":
+                return "#f1c40f";
+            case "production":
+                return "#2ecc71";
+            case "production-rollback":
+                return "#e67e22";
+            case "production-rollback-auto":
+                return "#3498db";
+            default:
+                return "#95a5a6";
+        }
     }
 }
