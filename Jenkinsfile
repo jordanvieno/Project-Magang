@@ -99,7 +99,7 @@ pipeline {
                 expression { params.DEPLOY_ACTION != 'Rollback' }
             }
             steps {
-                echo 'Menunggu otorisasi rilis ke Production...'
+                echo 'Menunggu otorisasi rilis ke Production..'
                 input message: 'Artefak sudah lolos Testing. Setujui deployment ke Production?', ok: 'Deploy Sekarang'
             }
         }
