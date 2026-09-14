@@ -39,10 +39,15 @@ pipeline {
             parallel {
                 stage('Backend Build (Maven)') {
                     steps {
-                        echo 'Fase 1A: Mengompilasi kode Java Backend...'
-                        sh 'mvn clean package'
-                    }
-                }
+                         echo 'Fase 1A: Mengompilasi kode Java Backend...'
+                         sh '''
+                         mkdir -p src/main/resources/static
+                         COMMIT_SHORT=$(git rev-parse --short HEAD)
+                         curl -L -o src/main/resources/static/foto.jpg "https://picsum.photos/seed/${COMMIT_SHORT}/400/300"
+                         mvn clean package
+                        '''
+    }
+}
                 stage('Frontend Build (Simulasi)') {
                     steps {
                         echo 'Fase 1B: Menyimulasikan bundling aset UI...'
