@@ -24,13 +24,16 @@ pipeline {
     when { expression { params.DEPLOY_ACTION != 'Rollback' } }
     steps {
         script {
-            githubNotify context: 'jenkins/quality-gate',
-                         description: 'Menjalankan unit test & coverage check...',
-                         status: 'PENDING',
-                         credentialsId: 'github-status-token',
-                         account: 'jordanvieno',
-                         repo: 'Project-Magang',
-                         sha: env.GIT_COMMIT
+            env.GIT_SHA = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+        }
+        withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
+            sh '''
+            curl -s -X POST \
+              -H "Authorization: token ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              https://api.github.com/repos/jordanvieno/Project-Magang/statuses/${GIT_SHA} \
+              -d '{"state":"pending","context":"jenkins/quality-gate","description":"Menjalankan unit test & coverage check..."}'
+            '''
         }
         echo 'Fase 0: Menjalankan Unit Test & Coverage Check (JUnit 5 + Jacoco)...'
         sh 'mvn clean verify'
@@ -41,26 +44,26 @@ pipeline {
             jacoco execPattern: 'target/jacoco.exec'
         }
         success {
-            script {
-                githubNotify context: 'jenkins/quality-gate',
-                             description: 'Test lolos & coverage memenuhi threshold 70%',
-                             status: 'SUCCESS',
-                             credentialsId: 'github-status-token',
-                             account: 'jordanvieno',
-                             repo: 'Project-Magang',
-                             sha: env.GIT_COMMIT
+            withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
+                sh '''
+                curl -s -X POST \
+                  -H "Authorization: token ${GH_TOKEN}" \
+                  -H "Accept: application/vnd.github+json" \
+                  https://api.github.com/repos/jordanvieno/Project-Magang/statuses/${GIT_SHA} \
+                  -d '{"state":"success","context":"jenkins/quality-gate","description":"Test lolos & coverage memenuhi threshold 70%"}'
+                '''
             }
             echo 'Status Quality Gate: PASSED'
         }
         failure {
-            script {
-                githubNotify context: 'jenkins/quality-gate',
-                             description: 'Test gagal atau coverage di bawah threshold',
-                             status: 'FAILURE',
-                             credentialsId: 'github-status-token',
-                             account: 'jordanvieno',
-                             repo: 'Project-Magang',
-                             sha: env.GIT_COMMIT
+            withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
+                sh '''
+                curl -s -X POST \
+                  -H "Authorization: token ${GH_TOKEN}" \
+                  -H "Accept: application/vnd.github+json" \
+                  https://api.github.com/repos/jordanvieno/Project-Magang/statuses/${GIT_SHA} \
+                  -d '{"state":"failure","context":"jenkins/quality-gate","description":"Test gagal atau coverage di bawah threshold"}'
+                '''
             }
             echo 'Status Quality Gate: FAILED — pipeline dihentikan.'
         }
