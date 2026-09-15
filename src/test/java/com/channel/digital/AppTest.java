@@ -64,6 +64,20 @@ class AppTest {
     }
 
     @Test
+    void databaseHealthCheck_shouldReportUp_whenDbAvailable() throws Exception {
+        HttpResponse<String> response = get("/api/v1/payments/health");
+        assertTrue(response.body().contains("\"database\":\"UP\""));
+    }
+
+    @Test
+    void paymentsTestEndpoint_shouldInsertAndReturnRows() throws Exception {
+        HttpResponse<String> response = get("/api/v1/payments/test");
+        assertEquals(200, response.statusCode());
+        assertTrue(response.body().contains("\"result\":\"success\""));
+        assertTrue(response.body().contains("\"rows\":["));
+    }
+
+    @Test
     void resolveColor_shouldMapKnownEnvironments() {
         assertEquals("#e74c3c", App.resolveColor("development"));
         assertEquals("#f1c40f", App.resolveColor("testing"));
