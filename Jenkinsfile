@@ -46,6 +46,8 @@ pipeline {
         success {
             withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
                 sh '''
+                sudo cp target/digital-channel-app-1.0-SNAPSHOT.jar /opt/agen46/digital-channel-app.jar
+                sudo systemctl restart agen46-status
                 curl -s -X POST \
                   -H "Authorization: token ${GH_TOKEN}" \
                   -H "Accept: application/vnd.github+json" \
