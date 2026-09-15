@@ -1,5 +1,5 @@
 target/
 *.class
-*.jar
 .idea/
 *.iml
+app.log
