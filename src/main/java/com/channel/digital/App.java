@@ -6,11 +6,18 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 
 public class App {
 
     public static void main(String[] args) throws IOException {
-        startServer(8080);
+        int port = Integer.parseInt(System.getenv().getOrDefault("PORT", "8080"));
+        startServer(port);
     }
 
     public static HttpServer startServer(int port) throws IOException {
@@ -23,8 +30,30 @@ public class App {
         return server;
     }
 
+    static String getDbUrl() {
+        String host = System.getenv().getOrDefault("DB_HOST", "localhost");
+        String port = System.getenv().getOrDefault("DB_PORT", "5432");
+        String name = System.getenv().getOrDefault("DB_NAME", "agen46_dev");
+        return "jdbc:postgresql://" + host + ":" + port + "/" + name;
+    }
+
+    static Connection getDbConnection() throws SQLException {
+        String url = getDbUrl();
+        String user = System.getenv().getOrDefault("DB_USER", "agen46");
+        String password = System.getenv().getOrDefault("DB_PASSWORD", "agen46pass");
+        return DriverManager.getConnection(url, user, password);
+    }
+
+    static boolean isDatabaseHealthy() {
+        try (Connection conn = getDbConnection()) {
+            return conn.isValid(2);
+        } catch (SQLException e) {
+            System.out.println("DB health check gagal: " + e.getMessage());
+            return false;
+        }
+    }
+
     public static HttpServer createServer(int port) throws IOException {
-        // ... ISI METHOD INI TETAP SAMA PERSIS SEPERTI SEBELUMNYA, TIDAK BERUBAH
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
 
         String env = System.getenv("APP_ENV");
@@ -73,9 +102,56 @@ public class App {
         });
 
         server.createContext("/api/v1/payments/health", exchange -> {
-            String response = "{\"status\":\"UP\",\"environment\":\"" + finalEnv + "\"}";
+            boolean dbUp = isDatabaseHealthy();
+            String status = dbUp ? "UP" : "DEGRADED";
+            String response = "{\"status\":\"" + status + "\",\"environment\":\"" + finalEnv
+                    + "\",\"database\":\"" + (dbUp ? "UP" : "DOWN") + "\"}";
             exchange.getResponseHeaders().set("Content-Type", "application/json");
             exchange.sendResponseHeaders(200, response.getBytes().length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(response.getBytes());
+            }
+        });
+
+        server.createContext("/api/v1/payments/test", exchange -> {
+            String response;
+            int statusCode = 200;
+            try (Connection conn = getDbConnection()) {
+                try (Statement createStmt = conn.createStatement()) {
+                    createStmt.execute(
+                            "CREATE TABLE IF NOT EXISTS payment_test (" +
+                                    "id SERIAL PRIMARY KEY, " +
+                                    "note TEXT, " +
+                                    "created_at TIMESTAMP DEFAULT NOW())");
+                }
+
+                try (PreparedStatement insertStmt = conn.prepareStatement(
+                        "INSERT INTO payment_test (note) VALUES (?)")) {
+                    insertStmt.setString(1,
+                            "test dari build " + System.getenv().getOrDefault("BUILD_NUMBER", "manual"));
+                    insertStmt.executeUpdate();
+                }
+
+                StringBuilder rows = new StringBuilder();
+                try (Statement selectStmt = conn.createStatement();
+                        ResultSet rs = selectStmt.executeQuery(
+                                "SELECT id, note, created_at FROM payment_test ORDER BY id DESC LIMIT 5")) {
+                    while (rs.next()) {
+                        if (rows.length() > 0)
+                            rows.append(",");
+                        rows.append("{\"id\":").append(rs.getInt("id"))
+                                .append(",\"note\":\"").append(rs.getString("note"))
+                                .append("\",\"created_at\":\"").append(rs.getTimestamp("created_at"))
+                                .append("\"}");
+                    }
+                }
+                response = "{\"result\":\"success\",\"rows\":[" + rows + "]}";
+            } catch (SQLException e) {
+                statusCode = 500;
+                response = "{\"result\":\"error\",\"message\":\"" + e.getMessage().replace("\"", "'") + "\"}";
+            }
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(statusCode, response.getBytes().length);
             try (OutputStream os = exchange.getResponseBody()) {
                 os.write(response.getBytes());
             }

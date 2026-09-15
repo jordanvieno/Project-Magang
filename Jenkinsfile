@@ -35,8 +35,69 @@ pipeline {
               -d '{"state":"pending","context":"jenkins/quality-gate","description":"Menjalankan unit test & coverage check..."}'
             '''
         }
+        echo 'Menyiapkan PostgreSQL sementara untuk testing...'
+        sh '''
+        docker rm -f agen46-db-test || true
+        docker run -d --name agen46-db-test \
+          -p 5544:5432 \
+          -e POSTGRES_USER=testuser \
+          -e POSTGRES_PASSWORD=testpass \
+          -e POSTGRES_DB=agen46_test \
+          postgres:16-alpine
+
+        echo "Menunggu PostgreSQL siap..."
+        for i in $(seq 1 15); do
+            if docker exec agen46-db-test pg_isready -U testuser > /dev/null 2>&1; then
+                echo "PostgreSQL siap."
+                break
+            fi
+            sleep 1
+        done
+        '''
         echo 'Fase 0: Menjalankan Unit Test & Coverage Check (JUnit 5 + Jacoco)...'
-        sh 'mvn clean verify'
+        withEnv([
+            'DB_HOST=localhost',
+            'DB_PORT=5544',
+            'DB_NAME=agen46_test',
+            'DB_USER=testuser',
+            'DB_PASSWORD=testpass'
+        ]) {
+            sh 'mvn clean verify'
+        }
+    }
+    post {
+        always {
+            junit testResults: 'target/surefire-reports/*.xml', allowEmptyResults: true
+            jacoco execPattern: 'target/jacoco.exec'
+            sh 'docker rm -f agen46-db-test || true'
+        }
+        success {
+            sh 'sudo /usr/local/bin/deploy-statusserver.sh'
+            withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
+                sh '''
+                curl -s -X POST \
+                  -H "Authorization: token ${GH_TOKEN}" \
+                  -H "Accept: application/vnd.github+json" \
+                  https://api.github.com/repos/jordanvieno/Project-Magang/statuses/${GIT_SHA} \
+                  -d '{"state":"success","context":"jenkins/quality-gate","description":"Test lolos & coverage memenuhi threshold 70%"}'
+                '''
+            }
+            echo 'Status Quality Gate: PASSED'
+        }
+        failure {
+            withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
+                sh '''
+                curl -s -X POST \
+                  -H "Authorization: token ${GH_TOKEN}" \
+                  -H "Accept: application/vnd.github+json" \
+                  https://api.github.com/repos/jordanvieno/Project-Magang/statuses/${GIT_SHA} \
+                  -d '{"state":"failure","context":"jenkins/quality-gate","description":"Test gagal atau coverage di bawah threshold"}'
+                '''
+            }
+            echo 'Status Quality Gate: FAILED — pipeline dihentikan.'
+        }
+    }
+}
     }
     post {
         always {
@@ -54,7 +115,7 @@ pipeline {
                   -d '{"state":"success","context":"jenkins/quality-gate","description":"Test lolos & coverage memenuhi threshold 70%"}'
                 '''
             }
-            echo 'Status Quality Gate: PASSED'
+            echo 'Status Quality Gate: PASSED'+
         }
         failure {
             withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
