@@ -39,11 +39,11 @@ pipeline {
                 sh '''
                 docker rm -f agen46-db-test || true
                 docker run -d --name agen46-db-test \
-                  -p 5544:5432 \
-                  -e POSTGRES_USER=testuser \
-                  -e POSTGRES_PASSWORD=testpass \
-                  -e POSTGRES_DB=agen46_test \
-                  postgres:16-alpine
+                -p 55432:5432 \
+                -e POSTGRES_USER=testuser \
+                -e POSTGRES_PASSWORD=testpass \
+                -e POSTGRES_DB=agen46_test \
+                postgres:16-alpine
 
                 echo "Menunggu PostgreSQL siap..."
                 for i in $(seq 1 15); do
@@ -57,7 +57,7 @@ pipeline {
                 echo 'Fase 0: Menjalankan Unit Test & Coverage Check (JUnit 5 + Jacoco)...'
                 withEnv([
                     'DB_HOST=localhost',
-                    'DB_PORT=5544',
+                    'DB_PORT=55432',
                     'DB_NAME=agen46_test',
                     'DB_USER=testuser',
                     'DB_PASSWORD=testpass'
