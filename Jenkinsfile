@@ -116,7 +116,7 @@ pipeline {
                 '''
             }
             echo 'Status Quality Gate: PASSED'+
-        }
+
         failure {
             withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
                 sh '''
