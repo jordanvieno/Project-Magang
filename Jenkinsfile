@@ -144,6 +144,14 @@ pipeline {
                 docker network create agen46-net || true
                 docker rm -f agen46-dev || true
                 docker run -d --name agen46-dev --network agen46-net -p 8081:8080 -e APP_ENV=development -e BUILD_NUMBER=${BUILD_NUMBER} ${IMAGE_NAME}:${BRANCH_NAME}-latest
+                  -e APP_ENV=development \
+                  -e BUILD_NUMBER=${BUILD_NUMBER} \
+                  -e DB_HOST=agen46-db-dev \
+                  -e DB_PORT=5432 \
+                  -e DB_NAME=agen46_dev \
+                  -e DB_USER=agen46 \
+                  -e DB_PASSWORD=agen46pass \
+                    ${IMAGE_NAME}:${BRANCH_NAME}-latest
                 curl "http://localhost:9000/update?stage=development&build=${BUILD_NUMBER}"
                 '''
             }
