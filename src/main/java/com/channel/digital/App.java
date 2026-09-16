@@ -12,8 +12,17 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.Map;
 
 public class App {
+
+    static final long START_TIME = System.currentTimeMillis();
+    static final AtomicLong healthRequestCount = new AtomicLong(0);
+    static final AtomicLong testRequestCount = new AtomicLong(0);
+    static final AtomicLong rootRequestCount = new AtomicLong(0);
+    static final Map<String, Long> lastResponseTimeMs = new ConcurrentHashMap<>();
 
     public static void main(String[] args) throws IOException {
         int port = Integer.parseInt(System.getenv().getOrDefault("PORT", "8080"));
@@ -66,6 +75,8 @@ public class App {
         final String finalColor = color;
 
         server.createContext("/", exchange -> {
+            long start = System.currentTimeMillis();
+            rootRequestCount.incrementAndGet();
             String html = "<html>"
                     + "<head><title>Agen46 Backend</title></head>"
                     + "<body style='background-color:" + finalColor
@@ -79,6 +90,39 @@ public class App {
             exchange.sendResponseHeaders(200, html.getBytes().length);
             try (OutputStream os = exchange.getResponseBody()) {
                 os.write(html.getBytes());
+            }
+            lastResponseTimeMs.put("root", System.currentTimeMillis() - start);
+        });
+
+        server.createContext("/metrics", exchange -> {
+            long uptimeSeconds = (System.currentTimeMillis() - START_TIME) / 1000;
+            StringBuilder sb = new StringBuilder();
+            sb.append("# HELP agen46_uptime_seconds Waktu aplikasi sudah berjalan\n");
+            sb.append("# TYPE agen46_uptime_seconds counter\n");
+            sb.append("agen46_uptime_seconds ").append(uptimeSeconds).append("\n");
+
+            sb.append("# HELP agen46_requests_total Jumlah request per endpoint\n");
+            sb.append("# TYPE agen46_requests_total counter\n");
+            sb.append("agen46_requests_total{endpoint=\"root\"} ").append(rootRequestCount.get()).append("\n");
+            sb.append("agen46_requests_total{endpoint=\"health\"} ").append(healthRequestCount.get()).append("\n");
+            sb.append("agen46_requests_total{endpoint=\"test\"} ").append(testRequestCount.get()).append("\n");
+
+            sb.append("# HELP agen46_last_response_time_ms Response time terakhir per endpoint (ms)\n");
+            sb.append("# TYPE agen46_last_response_time_ms gauge\n");
+            for (Map.Entry<String, Long> entry : lastResponseTimeMs.entrySet()) {
+                sb.append("agen46_last_response_time_ms{endpoint=\"").append(entry.getKey())
+                        .append("\"} ").append(entry.getValue()).append("\n");
+            }
+
+            sb.append("# HELP agen46_database_up Status koneksi database (1=up, 0=down)\n");
+            sb.append("# TYPE agen46_database_up gauge\n");
+            sb.append("agen46_database_up ").append(isDatabaseHealthy() ? 1 : 0).append("\n");
+
+            String response = sb.toString();
+            exchange.getResponseHeaders().set("Content-Type", "text/plain; version=0.0.4");
+            exchange.sendResponseHeaders(200, response.getBytes().length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(response.getBytes());
             }
         });
 
@@ -102,6 +146,8 @@ public class App {
         });
 
         server.createContext("/api/v1/payments/health", exchange -> {
+            long start = System.currentTimeMillis();
+            healthRequestCount.incrementAndGet();
             boolean dbUp = isDatabaseHealthy();
             String status = dbUp ? "UP" : "DEGRADED";
             String response = "{\"status\":\"" + status + "\",\"environment\":\"" + finalEnv
@@ -111,9 +157,12 @@ public class App {
             try (OutputStream os = exchange.getResponseBody()) {
                 os.write(response.getBytes());
             }
+            lastResponseTimeMs.put("health", System.currentTimeMillis() - start);
         });
 
         server.createContext("/api/v1/payments/test", exchange -> {
+            long start = System.currentTimeMillis();
+            testRequestCount.incrementAndGet();
             String response;
             int statusCode = 200;
             try (Connection conn = getDbConnection()) {
@@ -155,6 +204,7 @@ public class App {
             try (OutputStream os = exchange.getResponseBody()) {
                 os.write(response.getBytes());
             }
+            lastResponseTimeMs.put("test", System.currentTimeMillis() - start);
         });
 
         return server;

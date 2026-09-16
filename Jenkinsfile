@@ -141,8 +141,9 @@ pipeline {
             steps {
                 echo 'Deploy ke environment Development (container lokal)...'
                 sh '''
+                docker network create agen46-net || true
                 docker rm -f agen46-dev || true
-                docker run -d --name agen46-dev -p 8081:8080 -e APP_ENV=development -e BUILD_NUMBER=${BUILD_NUMBER} ${IMAGE_NAME}:${BRANCH_NAME}-latest
+                docker run -d --name agen46-dev --network agen46-net -p 8081:8080 -e APP_ENV=development -e BUILD_NUMBER=${BUILD_NUMBER} ${IMAGE_NAME}:${BRANCH_NAME}-latest
                 curl "http://localhost:9000/update?stage=development&build=${BUILD_NUMBER}"
                 '''
             }
