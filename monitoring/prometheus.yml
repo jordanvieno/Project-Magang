@@ -1,0 +1,7 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: "agen46-backend"
+    static_configs:
+      - targets: ["agen46-dev:8080"]
