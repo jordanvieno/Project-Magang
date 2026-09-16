@@ -110,6 +110,8 @@ pipeline {
                         COMMIT_SHORT=$(git rev-parse --short HEAD)
                         curl -L -o src/main/resources/static/foto.jpg "https://picsum.photos/seed/${COMMIT_SHORT}/400/300"
                         mvn package -DskipTests
+                        echo "=== VERIFIKASI: cek META-INF/services di jar hasil build ==="
+                        jar tf target/digital-channel-app-1.0-SNAPSHOT.jar | grep "META-INF/services" || echo "PERINGATAN: META-INF/services TIDAK DITEMUKAN di jar!"
                         '''
                     }
                 }
