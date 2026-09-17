@@ -280,6 +280,3 @@ pipeline {
         }
     }
 }
-
-# Catatan:
-# - Pastikan Jenkins memiliki akses ke Docker daemon untuk menjalankan perintah docker.
