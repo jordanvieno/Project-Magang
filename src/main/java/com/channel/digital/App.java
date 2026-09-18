@@ -78,7 +78,7 @@ public class App {
             long start = System.currentTimeMillis();
             rootRequestCount.incrementAndGet();
             String html = "<html>"
-                    + "<head><title>Agen46 Backend</title></head>"
+                    + "<head><title>Agen46 Backend</title><meta http-equiv='refresh' content='5'></head>"
                     + "<body style='background-color:" + finalColor
                     + "; color:white; font-family:sans-serif; text-align:center; padding-top:60px;'>"
                     + "<h1>Agen46 Backend</h1>"
