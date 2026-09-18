@@ -21,83 +21,78 @@ pipeline {
     stages {
 
         stage('Test & Quality Gate') {
-            when { expression { params.DEPLOY_ACTION != 'Rollback' } }
-            steps {
-                script {
-                    env.GIT_SHA = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
-                }
-                withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
-                    sh '''
-                    curl -s -X POST \
-                      -H "Authorization: token ${GH_TOKEN}" \
-                      -H "Accept: application/vnd.github+json" \
-                      https://api.github.com/repos/jordanvieno/Project-Magang/statuses/${GIT_SHA} \
-                      -d '{"state":"pending","context":"jenkins/quality-gate","description":"Menjalankan unit test & coverage check..."}'
-                    '''
-                }
-                echo 'Menyiapkan PostgreSQL sementara untuk testing...'
-                sh '''
-                docker rm -f agen46-db-test || true
-                docker run -d --name agen46-db-test \
-                -p 55432:5432 \
-                -e POSTGRES_USER=testuser \
-                -e POSTGRES_PASSWORD=testpass \
-                -e POSTGRES_DB=agen46_test \
-                postgres:16-alpine
+    when { expression { params.DEPLOY_ACTION != 'Rollback' } }
+    steps {
+        script {
+            env.GIT_SHA = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+        }
+        withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
+            sh '''
+            curl -s -X POST \
+              -H "Authorization: token ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              https://api.github.com/repos/jordanvieno/Project-Magang/statuses/${GIT_SHA} \
+              -d '{"state":"pending","context":"jenkins/quality-gate","description":"Menjalankan unit test & coverage check..."}'
+            '''
+        }
+        echo 'Menyiapkan PostgreSQL sementara untuk testing...'
+        withCredentials([usernamePassword(credentialsId: 'agen46-db-test-credentials', usernameVariable: 'DB_TEST_USER', passwordVariable: 'DB_TEST_PASS')]) {
+            sh '''
+            docker rm -f agen46-db-test || true
+            docker run -d --name agen46-db-test -p 55432:5432 -e POSTGRES_USER=${DB_TEST_USER} -e POSTGRES_PASSWORD=${DB_TEST_PASS} -e POSTGRES_DB=agen46_test postgres:16-alpine
 
-                echo "Menunggu PostgreSQL siap..."
-                for i in $(seq 1 15); do
-                    if docker exec agen46-db-test pg_isready -U testuser > /dev/null 2>&1; then
-                        echo "PostgreSQL siap."
-                        break
-                    fi
-                    sleep 1
-                done
-                '''
-                echo 'Fase 0: Menjalankan Unit Test & Coverage Check (JUnit 5 + Jacoco)...'
-                withEnv([
-                    'DB_HOST=localhost',
-                    'DB_PORT=55432',
-                    'DB_NAME=agen46_test',
-                    'DB_USER=testuser',
-                    'DB_PASSWORD=testpass'
-                ]) {
-                    sh 'mvn clean verify'
-                }
-            }
-            post {
-                always {
-                    junit testResults: 'target/surefire-reports/*.xml', allowEmptyResults: true
-                    jacoco execPattern: 'target/jacoco.exec'
-                    sh 'docker rm -f agen46-db-test || true'
-                }
-                success {
-                    sh 'sudo /usr/local/bin/deploy-statusserver.sh'
-                    withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
-                        sh '''
-                        curl -s -X POST \
-                          -H "Authorization: token ${GH_TOKEN}" \
-                          -H "Accept: application/vnd.github+json" \
-                          https://api.github.com/repos/jordanvieno/Project-Magang/statuses/${GIT_SHA} \
-                          -d '{"state":"success","context":"jenkins/quality-gate","description":"Test lolos & coverage memenuhi threshold 70%"}'
-                        '''
-                    }
-                    echo 'Status Quality Gate: PASSED'
-                }
-                failure {
-                    withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
-                        sh '''
-                        curl -s -X POST \
-                          -H "Authorization: token ${GH_TOKEN}" \
-                          -H "Accept: application/vnd.github+json" \
-                          https://api.github.com/repos/jordanvieno/Project-Magang/statuses/${GIT_SHA} \
-                          -d '{"state":"failure","context":"jenkins/quality-gate","description":"Test gagal atau coverage di bawah threshold"}'
-                        '''
-                    }
-                    echo 'Status Quality Gate: FAILED — pipeline dihentikan.'
-                }
+            echo "Menunggu PostgreSQL siap..."
+            for i in $(seq 1 15); do
+                if docker exec agen46-db-test pg_isready -U ${DB_TEST_USER} > /dev/null 2>&1; then
+                    echo "PostgreSQL siap."
+                    break
+                fi
+                sleep 1
+            done
+            '''
+            echo 'Fase 0: Menjalankan Unit Test & Coverage Check (JUnit 5 + Jacoco)...'
+            withEnv([
+                'DB_HOST=localhost',
+                'DB_PORT=55432',
+                'DB_NAME=agen46_test'
+            ]) {
+                sh 'DB_USER=${DB_TEST_USER} DB_PASSWORD=${DB_TEST_PASS} mvn clean verify'
             }
         }
+    }
+    post {
+        always {
+            junit testResults: 'target/surefire-reports/*.xml', allowEmptyResults: true
+            jacoco execPattern: 'target/jacoco.exec'
+            sh 'docker rm -f agen46-db-test || true'
+        }
+        success {
+            sh 'sudo /usr/local/bin/deploy-statusserver.sh'
+            withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
+                sh '''
+                curl -s -X POST \
+                  -H "Authorization: token ${GH_TOKEN}" \
+                  -H "Accept: application/vnd.github+json" \
+                  https://api.github.com/repos/jordanvieno/Project-Magang/statuses/${GIT_SHA} \
+                  -d '{"state":"success","context":"jenkins/quality-gate","description":"Test lolos & coverage memenuhi threshold 70%"}'
+                '''
+            }
+            echo 'Status Quality Gate: PASSED'
+        }
+        failure {
+            withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
+                sh '''
+                curl -s -X POST \
+                  -H "Authorization: token ${GH_TOKEN}" \
+                  -H "Accept: application/vnd.github+json" \
+                  https://api.github.com/repos/jordanvieno/Project-Magang/statuses/${GIT_SHA} \
+                  -d '{"state":"failure","context":"jenkins/quality-gate","description":"Test gagal atau coverage di bawah threshold"}'
+                '''
+            }
+            echo 'Status Quality Gate: FAILED — pipeline dihentikan.'
+        }
+    }
+}
 
         stage('Build & Package') {
             when { expression { params.DEPLOY_ACTION != 'Rollback' } }
@@ -135,19 +130,21 @@ pipeline {
             }
         }
 
-        stage('Deploy to Development') {
+       stage('Deploy to Development') {
     when {
         branch 'developmentlinux'
         expression { params.DEPLOY_ACTION != 'Rollback' }
     }
     steps {
         echo 'Deploy ke environment Development (container lokal)...'
-        sh '''
-        docker network create agen46-net || true
-        docker rm -f agen46-dev || true
-        docker run -d --name agen46-dev --network agen46-net -p 8081:8080 -e APP_ENV=development -e BUILD_NUMBER=${BUILD_NUMBER} -e DB_HOST=agen46-db-dev -e DB_PORT=5432 -e DB_NAME=agen46_dev -e DB_USER=agen46 -e DB_PASSWORD=agen46pass ${IMAGE_NAME}:${BRANCH_NAME}-latest
-        curl "http://localhost:9000/update?stage=development&build=${BUILD_NUMBER}"
-        '''
+        withCredentials([usernamePassword(credentialsId: 'agen46-db-dev-credentials', usernameVariable: 'DB_DEV_USER', passwordVariable: 'DB_DEV_PASS')]) {
+            sh '''
+            docker network create agen46-net || true
+            docker rm -f agen46-dev || true
+            docker run -d --name agen46-dev --network agen46-net -p 8081:8080 -e APP_ENV=development -e BUILD_NUMBER=${BUILD_NUMBER} -e DB_HOST=agen46-db-dev -e DB_PORT=5432 -e DB_NAME=agen46_dev -e DB_USER=${DB_DEV_USER} -e DB_PASSWORD=${DB_DEV_PASS} agen46-backend:${BRANCH_NAME}-latest
+            curl "http://localhost:9000/update?stage=development&build=${BUILD_NUMBER}"
+            '''
+        }
     }
 }
         stage('Deploy to Testing') {
