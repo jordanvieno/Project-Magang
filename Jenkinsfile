@@ -130,6 +130,23 @@ pipeline {
             }
         }
 
+        stage('Security Scan (Trivy)') {
+    when { expression { params.DEPLOY_ACTION != 'Rollback' } }
+    steps {
+        echo 'Fase 1D: Memindai image Docker dengan Trivy untuk kerentanan (CVE)...'
+        sh '''
+        docker run --rm \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          -v trivy-cache:/root/.cache/ \
+          aquasec/trivy:latest image \
+          --severity HIGH,CRITICAL \
+          --exit-code 0 \
+          --format table \
+          ${IMAGE_NAME}:${BRANCH_NAME}-latest
+        '''
+    }
+}
+
        stage('Deploy to Development') {
     when {
         branch 'developmentlinux'
