@@ -9,6 +9,10 @@ services:
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
       - agen46-prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-remote-write-receiver"
     networks:
       - agen46-net
     restart: unless-stopped
