@@ -1,0 +1,83 @@
+---
+- name: Setup Agen46 CI/CD Infrastructure
+  hosts: agen46_server
+  become: true
+  vars:
+    deploy_user: jordanvieno
+    monitoring_dir: "/mnt/c/Users/Jordan/OneDrive/Documents/Kuliah Ilmu Komputer di IPB/Magang/Project Magang Linux/Project_Magang_Linux/monitoring"
+
+  tasks:
+    - name: Pastikan Docker network agen46-net ada
+      community.docker.docker_network:
+        name: agen46-net
+        state: present
+
+    - name: Buat folder /opt/agen46 untuk StatusServer
+      file:
+        path: /opt/agen46
+        state: directory
+        owner: "{{ deploy_user }}"
+        mode: "0755"
+
+    - name: Buat script wrapper deploy-statusserver.sh
+      copy:
+        dest: /usr/local/bin/deploy-statusserver.sh
+        mode: "0700"
+        owner: root
+        content: |
+          #!/bin/bash
+          set -euo pipefail
+
+          JAR=$(find /var/lib/jenkins/workspace \
+                -path "*/target/digital-channel-app-1.0-SNAPSHOT.jar" \
+                -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -n1 | cut -d' ' -f2-)
+
+          if [ -z "$JAR" ]; then
+              echo "ERROR: jar tidak ditemukan di workspace manapun" >&2
+              exit 1
+          fi
+
+          echo "Menggunakan jar: $JAR"
+          cp "$JAR" /opt/agen46/digital-channel-app.jar
+          systemctl restart agen46-status
+
+    - name: Buat systemd service untuk StatusServer
+      copy:
+        dest: /etc/systemd/system/agen46-status.service
+        content: |
+          [Unit]
+          Description=Agen46 Pipeline Status Dashboard
+          After=network.target
+
+          [Service]
+          Type=simple
+          ExecStart=/usr/bin/java -cp /opt/agen46/digital-channel-app.jar com.channel.digital.StatusServer
+          Restart=always
+          RestartSec=5
+          User={{ deploy_user }}
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: true
+
+    - name: Enable dan pastikan agen46-status aktif
+      systemd:
+        name: agen46-status
+        enabled: true
+        state: started
+
+    - name: Tambahkan sudoers rule untuk Jenkins user
+      copy:
+        dest: /etc/sudoers.d/jenkins-statusserver
+        mode: "0440"
+        validate: "visudo -cf %s"
+        content: |
+          jenkins ALL=(root) NOPASSWD: /usr/local/bin/deploy-statusserver.sh
+
+    - name: Jalankan docker-compose stack monitoring
+      community.docker.docker_compose_v2:
+        project_src: "{{ monitoring_dir }}"
+        state: present
