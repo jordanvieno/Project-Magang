@@ -11,6 +11,7 @@ pipeline {
 
     environment {
         IMAGE_NAME = 'agen46-backend'
+        REGISTRY = 'localhost:5050'
     }
 
     parameters {
@@ -21,81 +22,84 @@ pipeline {
     stages {
 
         stage('Test & Quality Gate') {
-    when { expression { params.DEPLOY_ACTION != 'Rollback' } }
-    steps {
-        script {
-            env.GIT_SHA = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
-        }
-        withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
-            sh '''
-            curl -s -X POST \
-              -H "Authorization: token ${GH_TOKEN}" \
-              -H "Accept: application/vnd.github+json" \
-              https://api.github.com/repos/jordanvieno/Project-Magang/statuses/${GIT_SHA} \
-              -d '{"state":"pending","context":"jenkins/quality-gate","description":"Menjalankan unit test & coverage check..."}'
-            '''
-        }
-        echo 'Menyiapkan PostgreSQL sementara untuk testing...'
-        withCredentials([usernamePassword(credentialsId: 'agen46-db-test-credentials', usernameVariable: 'DB_TEST_USER', passwordVariable: 'DB_TEST_PASS')]) {
-            sh '''
-            docker rm -f agen46-db-test || true
-            docker run -d --name agen46-db-test -p 55432:5432 -e POSTGRES_USER=${DB_TEST_USER} -e POSTGRES_PASSWORD=${DB_TEST_PASS} -e POSTGRES_DB=agen46_test postgres:16-alpine
+            when { expression { params.DEPLOY_ACTION != 'Rollback' } }
+            steps {
+                script {
+                    env.GIT_SHA = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+                }
+                withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
+                    sh '''
+                    curl -s -X POST \
+                      -H "Authorization: token ${GH_TOKEN}" \
+                      -H "Accept: application/vnd.github+json" \
+                      https://api.github.com/repos/jordanvieno/Project-Magang/statuses/${GIT_SHA} \
+                      -d '{"state":"pending","context":"jenkins/quality-gate","description":"Menjalankan unit test & coverage check..."}'
+                    '''
+                }
+                echo 'Menyiapkan PostgreSQL sementara untuk testing...'
+                withCredentials([usernamePassword(credentialsId: 'agen46-db-test-credentials', usernameVariable: 'DB_TEST_USER', passwordVariable: 'DB_TEST_PASS')]) {
+                    sh '''
+                    docker rm -f agen46-db-test || true
+                    docker run -d --name agen46-db-test -p 55432:5432 -e POSTGRES_USER=${DB_TEST_USER} -e POSTGRES_PASSWORD=${DB_TEST_PASS} -e POSTGRES_DB=agen46_test postgres:16-alpine
 
-            echo "Menunggu PostgreSQL siap..."
-            for i in $(seq 1 15); do
-                if docker exec agen46-db-test pg_isready -U ${DB_TEST_USER} > /dev/null 2>&1; then
-                    echo "PostgreSQL siap."
-                    break
-                fi
-                sleep 1
-            done
-            '''
-            echo 'Fase 0: Menjalankan Unit Test & Coverage Check (JUnit 5 + Jacoco)...'
-            withEnv([
-                'DB_HOST=localhost',
-                'DB_PORT=55432',
-                'DB_NAME=agen46_test'
-            ]) {
-                sh 'DB_USER=${DB_TEST_USER} DB_PASSWORD=${DB_TEST_PASS} mvn clean verify'
+                    echo "Menunggu PostgreSQL siap..."
+                    for i in $(seq 1 15); do
+                        if docker exec agen46-db-test pg_isready -U ${DB_TEST_USER} > /dev/null 2>&1; then
+                            echo "PostgreSQL siap."
+                            break
+                        fi
+                        sleep 1
+                    done
+                    '''
+                    echo 'Fase 0: Menjalankan Unit Test & Coverage Check (JUnit 5 + Jacoco)...'
+                    withEnv([
+                        'DB_HOST=localhost',
+                        'DB_PORT=55432',
+                        'DB_NAME=agen46_test'
+                    ]) {
+                        sh 'DB_USER=${DB_TEST_USER} DB_PASSWORD=${DB_TEST_PASS} mvn clean verify'
+                    }
+                }
+            }
+            post {
+                always {
+                    junit testResults: 'target/surefire-reports/*.xml', allowEmptyResults: true
+                    jacoco execPattern: 'target/jacoco.exec'
+                    sh 'docker rm -f agen46-db-test || true'
+                }
+                success {
+                    sh 'sudo /usr/local/bin/deploy-statusserver.sh'
+                    withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
+                        sh '''
+                        curl -s -X POST \
+                          -H "Authorization: token ${GH_TOKEN}" \
+                          -H "Accept: application/vnd.github+json" \
+                          https://api.github.com/repos/jordanvieno/Project-Magang/statuses/${GIT_SHA} \
+                          -d '{"state":"success","context":"jenkins/quality-gate","description":"Test lolos & coverage memenuhi threshold 70%"}'
+                        '''
+                    }
+                    echo 'Status Quality Gate: PASSED'
+                }
+                failure {
+                    withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
+                        sh '''
+                        curl -s -X POST \
+                          -H "Authorization: token ${GH_TOKEN}" \
+                          -H "Accept: application/vnd.github+json" \
+                          https://api.github.com/repos/jordanvieno/Project-Magang/statuses/${GIT_SHA} \
+                          -d '{"state":"failure","context":"jenkins/quality-gate","description":"Test gagal atau coverage di bawah threshold"}'
+                        '''
+                    }
+                    echo 'Status Quality Gate: FAILED — pipeline dihentikan.'
+                }
             }
         }
-    }
-    post {
-        always {
-            junit testResults: 'target/surefire-reports/*.xml', allowEmptyResults: true
-            jacoco execPattern: 'target/jacoco.exec'
-            sh 'docker rm -f agen46-db-test || true'
-        }
-        success {
-            sh 'sudo /usr/local/bin/deploy-statusserver.sh'
-            withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
-                sh '''
-                curl -s -X POST \
-                  -H "Authorization: token ${GH_TOKEN}" \
-                  -H "Accept: application/vnd.github+json" \
-                  https://api.github.com/repos/jordanvieno/Project-Magang/statuses/${GIT_SHA} \
-                  -d '{"state":"success","context":"jenkins/quality-gate","description":"Test lolos & coverage memenuhi threshold 70%"}'
-                '''
-            }
-            echo 'Status Quality Gate: PASSED'
-        }
-        failure {
-            withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
-                sh '''
-                curl -s -X POST \
-                  -H "Authorization: token ${GH_TOKEN}" \
-                  -H "Accept: application/vnd.github+json" \
-                  https://api.github.com/repos/jordanvieno/Project-Magang/statuses/${GIT_SHA} \
-                  -d '{"state":"failure","context":"jenkins/quality-gate","description":"Test gagal atau coverage di bawah threshold"}'
-                '''
-            }
-            echo 'Status Quality Gate: FAILED — pipeline dihentikan.'
-        }
-    }
-}
 
         stage('Build & Package') {
-            when { expression { params.DEPLOY_ACTION != 'Rollback' } }
+            when {
+                branch 'developmentlinux'
+                expression { params.DEPLOY_ACTION != 'Rollback' }
+            }
             parallel {
                 stage('Backend Build (Maven)') {
                     steps {
@@ -123,54 +127,84 @@ pipeline {
         }
 
         stage('Containerization (Docker Build)') {
-            when { expression { params.DEPLOY_ACTION != 'Rollback' } }
+            when {
+                branch 'developmentlinux'
+                expression { params.DEPLOY_ACTION != 'Rollback' }
+            }
             steps {
-                echo 'Fase 1C: Membungkus artefak menjadi Docker Image...'
-                sh "docker build --no-cache -t ${IMAGE_NAME}:${BRANCH_NAME}-${BUILD_NUMBER} -t ${IMAGE_NAME}:${BRANCH_NAME}-latest ."
+                echo 'Fase 1C: Membungkus artefak menjadi Docker Image (single source of truth), push ke registry...'
+                sh '''
+                docker build --no-cache -t ${IMAGE_NAME}:${GIT_SHA} -t ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA} .
+                docker push ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA}
+                docker tag ${IMAGE_NAME}:${GIT_SHA} ${IMAGE_NAME}:${BRANCH_NAME}-${BUILD_NUMBER}
+                docker tag ${IMAGE_NAME}:${GIT_SHA} ${IMAGE_NAME}:${BRANCH_NAME}-latest
+                '''
             }
         }
 
         stage('Security Scan (Trivy)') {
-    when { expression { params.DEPLOY_ACTION != 'Rollback' } }
-    steps {
-        echo 'Fase 1D: Memindai image Docker dengan Trivy untuk kerentanan (CVE)...'
-        sh '''
-        docker run --rm \
-          -v /var/run/docker.sock:/var/run/docker.sock \
-          -v trivy-cache:/root/.cache/ \
-          aquasec/trivy:latest image \
-          --severity HIGH,CRITICAL \
-          --exit-code 0 \
-          --format table \
-          ${IMAGE_NAME}:${BRANCH_NAME}-latest
-        '''
-    }
-}
-
-       stage('Deploy to Development') {
-    when {
-        branch 'developmentlinux'
-        expression { params.DEPLOY_ACTION != 'Rollback' }
-    }
-    steps {
-        echo 'Deploy ke environment Development (container lokal)...'
-        withCredentials([usernamePassword(credentialsId: 'agen46-db-dev-credentials', usernameVariable: 'DB_DEV_USER', passwordVariable: 'DB_DEV_PASS')]) {
-            sh '''
-            docker network create agen46-net || true
-            docker rm -f agen46-dev || true
-            docker run -d --name agen46-dev --network agen46-net -p 8081:8080 -e APP_ENV=development -e BUILD_NUMBER=${BUILD_NUMBER} -e DB_HOST=agen46-db-dev -e DB_PORT=5432 -e DB_NAME=agen46_dev -e DB_USER=${DB_DEV_USER} -e DB_PASSWORD=${DB_DEV_PASS} agen46-backend:${BRANCH_NAME}-latest
-            curl "http://localhost:9000/update?stage=development&build=${BUILD_NUMBER}"
-            '''
+            when {
+                branch 'developmentlinux'
+                expression { params.DEPLOY_ACTION != 'Rollback' }
+            }
+            steps {
+                echo 'Fase 1D: Memindai image Docker dengan Trivy untuk kerentanan (CVE)...'
+                sh '''
+                docker run --rm \
+                  -v /var/run/docker.sock:/var/run/docker.sock \
+                  -v trivy-cache:/root/.cache/ \
+                  aquasec/trivy:latest image \
+                  --severity HIGH,CRITICAL \
+                  --exit-code 0 \
+                  --format table \
+                  ${IMAGE_NAME}:${GIT_SHA}
+                '''
+            }
         }
-    }
-}
+
+        stage('Promote Image') {
+            when {
+                anyOf {
+                    branch 'testing'
+                    branch 'production'
+                }
+                expression { params.DEPLOY_ACTION != 'Rollback' }
+            }
+            steps {
+                echo "Fase 1E: Mengambil image yang SAMA persis dari registry (commit ${env.GIT_SHA}), tanpa build ulang..."
+                sh '''
+                docker pull ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA}
+                docker tag ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA} ${IMAGE_NAME}:${BRANCH_NAME}-${BUILD_NUMBER}
+                docker tag ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA} ${IMAGE_NAME}:${BRANCH_NAME}-latest
+                '''
+            }
+        }
+
+        stage('Deploy to Development') {
+            when {
+                branch 'developmentlinux'
+                expression { params.DEPLOY_ACTION != 'Rollback' }
+            }
+            steps {
+                echo 'Deploy ke environment Development (container lokal)...'
+                withCredentials([usernamePassword(credentialsId: 'agen46-db-dev-credentials', usernameVariable: 'DB_DEV_USER', passwordVariable: 'DB_DEV_PASS')]) {
+                    sh '''
+                    docker network create agen46-net || true
+                    docker rm -f agen46-dev || true
+                    docker run -d --name agen46-dev --network agen46-net -p 8081:8080 -e APP_ENV=development -e BUILD_NUMBER=${BUILD_NUMBER} -e DB_HOST=agen46-db-dev -e DB_PORT=5432 -e DB_NAME=agen46_dev -e DB_USER=${DB_DEV_USER} -e DB_PASSWORD=${DB_DEV_PASS} ${IMAGE_NAME}:${BRANCH_NAME}-latest
+                    curl "http://localhost:9000/update?stage=development&build=${BUILD_NUMBER}"
+                    '''
+                }
+            }
+        }
+
         stage('Deploy to Testing') {
             when {
                 branch 'testing'
                 expression { params.DEPLOY_ACTION != 'Rollback' }
             }
             steps {
-                echo 'Deploy ke environment Testing/SIT (container lokal)...'
+                echo 'Deploy ke environment Testing/SIT (container lokal, image hasil promote dari Development)...'
                 sh '''
                 docker rm -f agen46-testing || true
                 docker run -d --name agen46-testing -p 8082:8080 -e APP_ENV=testing -e BUILD_NUMBER=${BUILD_NUMBER} ${IMAGE_NAME}:testing-latest
@@ -202,7 +236,7 @@ pipeline {
                         curl "http://localhost:9000/update?stage=production-rollback&build=${params.ROLLBACK_VERSION}"
                         """
                     } else {
-                        echo 'Deploy ke environment Production (container lokal)...'
+                        echo 'Deploy ke environment Production (container lokal, image hasil promote dari Testing)...'
                         sh """
                         docker rm -f agen46-prod || true
                         docker run -d --name agen46-prod -p 8083:8080 -e APP_ENV=production -e BUILD_NUMBER=${BUILD_NUMBER} ${IMAGE_NAME}:production-latest
