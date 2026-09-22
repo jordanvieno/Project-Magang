@@ -211,7 +211,16 @@ pipeline {
         }
     }
 }
-
+      stage('Approval for Testing') {
+    when {
+        branch 'testing'
+        expression { params.DEPLOY_ACTION != 'Rollback' }
+    }
+    steps {
+        echo 'Menunggu otorisasi sebelum masuk ke environment Testing...'
+        input message: 'Build sudah lolos Quality Gate, Security Scan, dan Promote Image. Setujui deployment ke Testing?', ok: 'Deploy ke Testing'
+    }
+}
        stage('Deploy to Testing') {
     when {
         branch 'testing'
