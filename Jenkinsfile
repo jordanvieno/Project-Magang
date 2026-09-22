@@ -186,7 +186,7 @@ pipeline {
             }
             steps {
                 echo 'Menunggu otorisasi rilis ke Production...'
-                input message: 'Artefak sudah lolos Testing. Setujui deployment ke Production?', okay: 'Deploy Sekarang'
+                input message: 'Artefak sudah lolos Testing. Setujui deployment ke Production?', ok: 'Deploy Sekarang'
             }
         }
 
