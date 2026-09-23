@@ -116,10 +116,12 @@ pipeline {
                 }
                 stage('Frontend Build (Simulasi)') {
                     steps {
-                        echo 'Fase 1B: Menyimulasikan bundling aset UI...'
+                        echo 'Fase 1B: Membangun image frontend (nginx + static assets)...'
                         sh '''
-                        mkdir -p build
-                        echo "Antarmuka Agen46 BNI (Rilis Versi ${BUILD_NUMBER})" > build/index.html
+                        cd frontend
+                        docker build --no-cache -t agen46-frontend:${GIT_SHA} -t ${REGISTRY}/agen46-frontend:${GIT_SHA} .
+                        docker push ${REGISTRY}/agen46-frontend:${GIT_SHA}
+                        docker tag agen46-frontend:${GIT_SHA} agen46-frontend:${BRANCH_NAME}-latest
                         '''
                     }
                 }
@@ -176,6 +178,9 @@ pipeline {
                 docker pull ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA}
                 docker tag ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA} ${IMAGE_NAME}:${BRANCH_NAME}-${BUILD_NUMBER}
                 docker tag ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA} ${IMAGE_NAME}:${BRANCH_NAME}-latest
+
+                docker pull ${REGISTRY}/agen46-frontend:${GIT_SHA}
+                docker tag ${REGISTRY}/agen46-frontend:${GIT_SHA} agen46-frontend:${BRANCH_NAME}-latest
                 '''
             }
         }
