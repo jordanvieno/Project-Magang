@@ -234,7 +234,7 @@ pipeline {
         curl "http://localhost:9000/update?stage=testing&build=${BUILD_NUMBER}"
         '''
         script {
-            echo 'Smoke test: memverifikasi endpoint Testing merespons...'
+            echo 'Smoke test: memverifikasi endpoint testing merespons...'
             sleep(time: 3, unit: 'SECONDS')
             def statusCode = sh(
                 script: "curl -s -o /dev/null -w '%{http_code}' http://localhost:8082/api/v1/payments/health || true",
