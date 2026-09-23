@@ -191,7 +191,7 @@ pipeline {
             sh '''
             docker network create agen46-net || true
             docker rm -f agen46-dev || true
-            docker run -d --name agen46-dev --network agen46-net -p 8081:8080 -e APP_ENV=development -e BUILD_NUMBER=${BUILD_NUMBER} -e DB_HOST=agen46-db-dev -e DB_PORT=5432 -e DB_NAME=agen46_dev -e DB_USER=${DB_DEV_USER} -e DB_PASSWORD=${DB_DEV_PASS} ${IMAGE_NAME}:${BRANCH_NAME}-latest
+            docker run -d --name agen46-dev --network agen46-net --restart unless-stopped -p 8081:8080 -e APP_ENV=development -e BUILD_NUMBER=${BUILD_NUMBER} -e DB_HOST=agen46-db-dev -e DB_PORT=5432 -e DB_NAME=agen46_dev -e DB_USER=${DB_DEV_USER} -e DB_PASSWORD=${DB_DEV_PASS} ${IMAGE_NAME}:${BRANCH_NAME}-latest
             curl "http://localhost:9000/update?stage=development&build=${BUILD_NUMBER}"
             '''
         }
@@ -230,7 +230,7 @@ pipeline {
         echo 'Deploy ke environment Testing/SIT (container lokal, image hasil promote dari Development)...'
         sh '''
         docker rm -f agen46-testing || true
-        docker run -d --name agen46-testing -p 8082:8080 -e APP_ENV=testing -e BUILD_NUMBER=${BUILD_NUMBER} ${IMAGE_NAME}:testing-latest
+        docker run -d --name agen46-testing --restart unless-stopped -p 8082:8080 -e APP_ENV=testing -e BUILD_NUMBER=${BUILD_NUMBER} ${IMAGE_NAME}:testing-latest
         curl "http://localhost:9000/update?stage=testing&build=${BUILD_NUMBER}"
         '''
         script {
@@ -269,7 +269,7 @@ pipeline {
                         echo "ROLLBACK MANUAL ke versi production-${params.ROLLBACK_VERSION}..."
                         sh """
                         docker rm -f agen46-prod || true
-                        docker run -d --name agen46-prod -p 8083:8080 -e APP_ENV=production -e BUILD_NUMBER=${params.ROLLBACK_VERSION} ${IMAGE_NAME}:production-${params.ROLLBACK_VERSION}
+                        docker run -d --name agen46-prod --restart unless-stopped -p 8083:8080 -e APP_ENV=production -e BUILD_NUMBER=${params.ROLLBACK_VERSION} ${IMAGE_NAME}:production-${params.ROLLBACK_VERSION}
                         curl "http://localhost:9000/update?stage=production-rollback&build=${params.ROLLBACK_VERSION}"
                         """
                     } else {
