@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>Agen46 Dashboard</title>
+<style>
+  body { font-family: sans-serif; background:#1e1e2e; color:#eee; text-align:center; padding-top:40px; }
+  button { padding:10px 20px; font-size:16px; margin:8px; border:none; border-radius:6px; cursor:pointer; background:#4a6cf7; color:white; }
+  button:hover { background:#3a5ce0; }
+  #result { margin-top:20px; padding:15px; background:#2a2a3c; border-radius:8px; display:inline-block; min-width:300px; white-space:pre-wrap; text-align:left; font-family:monospace; }
+  .up { color:#2ecc71; } .down { color:#e74c3c; }
+</style>
+</head>
+<body>
+  <h1>Agen46 — Frontend Dashboard</h1>
+  <p>Environment: <b id="env-label">memuat...</b></p>
+
+  <button onclick="checkHealth()">Cek Kesehatan Sistem</button>
+  <button onclick="runTestEndpoint()">Test Insert Database</button>
+
+  <div id="result">Klik salah satu tombol di atas untuk mulai.</div>
+
+<script>
+  async function checkHealth() {
+    const resultBox = document.getElementById('result');
+    resultBox.textContent = 'Memuat...';
+    try {
+      const res = await fetch('/api/v1/payments/health');
+      const data = await res.json();
+      const cls = data.database === 'UP' ? 'up' : 'down';
+      resultBox.innerHTML = `Status: <span class="${cls}">${data.status}</span>\nEnvironment: ${data.environment}\nDatabase: <span class="${cls}">${data.database}</span>`;
+      document.getElementById('env-label').textContent = data.environment;
+    } catch (e) {
+      resultBox.textContent = 'Gagal menghubungi backend: ' + e.message;
+    }
+  }
+
+  async function runTestEndpoint() {
+    const resultBox = document.getElementById('result');
+    resultBox.textContent = 'Mengirim data test...';
+    try {
+      const res = await fetch('/api/v1/payments/test');
+      const data = await res.json();
+      resultBox.textContent = JSON.stringify(data, null, 2);
+    } catch (e) {
+      resultBox.textContent = 'Gagal menghubungi backend: ' + e.message;
+    }
+  }
+
+  checkHealth();
+</script>
+</body>
+</html>
