@@ -198,6 +198,9 @@ pipeline {
             docker rm -f agen46-dev || true
             docker run -d --name agen46-dev --network agen46-net --restart unless-stopped -p 8081:8080 -e APP_ENV=development -e BUILD_NUMBER=${BUILD_NUMBER} -e DB_HOST=agen46-db-dev -e DB_PORT=5432 -e DB_NAME=agen46_dev -e DB_USER=${DB_DEV_USER} -e DB_PASSWORD=${DB_DEV_PASS} ${IMAGE_NAME}:${BRANCH_NAME}-latest
             curl "http://localhost:9000/update?stage=development&build=${BUILD_NUMBER}"
+
+            docker rm -f agen46-frontend-dev || true
+            docker run -d --name agen46-frontend-dev --network agen46-net --restart unless-stopped -p 8091:80 -e BACKEND_HOST=agen46-dev agen46-frontend:${BRANCH_NAME}-latest
             '''
         }
         script {
@@ -237,6 +240,9 @@ pipeline {
         docker rm -f agen46-testing || true
         docker run -d --name agen46-testing --restart unless-stopped -p 8082:8080 -e APP_ENV=testing -e BUILD_NUMBER=${BUILD_NUMBER} ${IMAGE_NAME}:testing-latest
         curl "http://localhost:9000/update?stage=testing&build=${BUILD_NUMBER}"
+
+        docker rm -f agen46-frontend-dev || true
+        docker run -d --name agen46-frontend-dev --network agen46-net --restart unless-stopped -p 8091:80 -e BACKEND_HOST=agen46-dev agen46-frontend:${BRANCH_NAME}-latest
         '''
         script {
             echo 'Smoke test: memverifikasi endpoint testing merespons...'
@@ -280,8 +286,12 @@ pipeline {
                     } else {
                         echo 'Deploy ke environment Production (container lokal, image hasil promote dari Testing)...'
                         sh """
+                        docker network create agen46-net || true
                         docker rm -f agen46-prod || true
-                        docker run -d --name agen46-prod -p 8083:8080 -e APP_ENV=production -e BUILD_NUMBER=${BUILD_NUMBER} ${IMAGE_NAME}:production-latest
+                        docker run -d --name agen46-prod --network agen46-net -p 8083:8080 -e APP_ENV=production -e BUILD_NUMBER=${BUILD_NUMBER} ${IMAGE_NAME}:production-latest
+
+                        docker rm -f agen46-frontend-prod || true
+                        docker run -d --name agen46-frontend-prod --network agen46-net --restart unless-stopped -p 8093:80 -e BACKEND_HOST=agen46-prod agen46-frontend:production-latest
                         """
 
                         echo 'Menunggu aplikasi siap, melakukan health check...'
