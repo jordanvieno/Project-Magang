@@ -36,7 +36,7 @@ pipeline {
                       -d '{"state":"pending","context":"jenkins/quality-gate","description":"Menjalankan unit test & coverage check..."}'
                     '''
                 }
-                echo 'Menyiapkan PostgreSQL sementara untuk testing...'
+                echo 'Menyiapkan PostgresSQL sementara untuk testing...'
                 withCredentials([usernamePassword(credentialsId: 'agen46-db-test-credentials', usernameVariable: 'DB_TEST_USER', passwordVariable: 'DB_TEST_PASS')]) {
                     sh '''
                     docker rm -f agen46-db-test || true
