@@ -377,7 +377,7 @@ flowchart TB
 ## 🌿 Environment & Branching Strategy
 
 ```mermaid
-gitgraph
+gitGraph
     commit id: "feature"
     branch developmentlinux
     checkout developmentlinux
