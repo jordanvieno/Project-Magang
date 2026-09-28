@@ -151,13 +151,28 @@ pipeline {
             }
             steps {
                 echo 'Fase 1D: Memindai image Docker dengan Trivy untuk kerentanan (CVE)...'
+                
+                echo '[Scan 1] Informational (HIGH) - Menampilkan log kerentanan, pipeline jalan terus'
                 sh '''
                 docker run --rm \
                   -v /var/run/docker.sock:/var/run/docker.sock \
                   -v trivy-cache:/root/.cache/ \
                   aquasec/trivy:latest image \
-                  --severity HIGH,CRITICAL \
+                  --severity HIGH \
                   --exit-code 0 \
+                  --format table \
+                  ${IMAGE_NAME}:${GIT_SHA}
+                '''
+
+                echo '[Scan 2] Blocking (CRITICAL) - Pipeline berhenti (GAGAL) jika ada CVE Kritis yang sudah memiliki patch'
+                sh '''
+                docker run --rm \
+                  -v /var/run/docker.sock:/var/run/docker.sock \
+                  -v trivy-cache:/root/.cache/ \
+                  aquasec/trivy:latest image \
+                  --severity CRITICAL \
+                  --ignore-unfixed \
+                  --exit-code 1 \
                   --format table \
                   ${IMAGE_NAME}:${GIT_SHA}
                 '''
