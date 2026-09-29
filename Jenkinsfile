@@ -118,13 +118,14 @@ pipeline {
                     steps {
                         echo 'Fase 1B: Membangun image frontend (nginx + static assets)...'
                         withCredentials([usernamePassword(credentialsId: 'REGISTRY_CREDS', passwordVariable: 'REG_PASS', usernameVariable: 'REG_USER')]) {
-                        sh '''
-                        docker login ${REGISTRY} -u ${REG_USER} -p ${REG_PASS}
-                        cd frontend
-                        docker build --no-cache -t agen46-frontend:${GIT_SHA} -t ${REGISTRY}/agen46-frontend:${GIT_SHA} .
-                        docker push ${REGISTRY}/agen46-frontend:${GIT_SHA}
-                        docker tag agen46-frontend:${GIT_SHA} agen46-frontend:${BRANCH_NAME}-latest
-                        '''
+                            sh '''
+                            docker login ${REGISTRY} -u ${REG_USER} -p ${REG_PASS}
+                            cd frontend
+                            docker build --no-cache -t agen46-frontend:${GIT_SHA} -t ${REGISTRY}/agen46-frontend:${GIT_SHA} .
+                            docker push ${REGISTRY}/agen46-frontend:${GIT_SHA}
+                            docker tag agen46-frontend:${GIT_SHA} agen46-frontend:${BRANCH_NAME}-latest
+                            '''
+                        }
                     }
                 }
             }
@@ -138,13 +139,14 @@ pipeline {
             steps {
                 echo 'Fase 1C: Membungkus artefak menjadi Docker Image (single source of truth), push ke registry...'
                 withCredentials([usernamePassword(credentialsId: 'REGISTRY_CREDS', passwordVariable: 'REG_PASS', usernameVariable: 'REG_USER')]) {
-                sh '''
-                docker login ${REGISTRY} -u ${REG_USER} -p ${REG_PASS}
-                docker build --no-cache -t ${IMAGE_NAME}:${GIT_SHA} -t ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA} .
-                docker push ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA}
-                docker tag ${IMAGE_NAME}:${GIT_SHA} ${IMAGE_NAME}:${BRANCH_NAME}-${BUILD_NUMBER}
-                docker tag ${IMAGE_NAME}:${GIT_SHA} ${IMAGE_NAME}:${BRANCH_NAME}-latest
-                '''
+                    sh '''
+                    docker login ${REGISTRY} -u ${REG_USER} -p ${REG_PASS}
+                    docker build --no-cache -t ${IMAGE_NAME}:${GIT_SHA} -t ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA} .
+                    docker push ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA}
+                    docker tag ${IMAGE_NAME}:${GIT_SHA} ${IMAGE_NAME}:${BRANCH_NAME}-${BUILD_NUMBER}
+                    docker tag ${IMAGE_NAME}:${GIT_SHA} ${IMAGE_NAME}:${BRANCH_NAME}-latest
+                    '''
+                }
             }
         }
 
@@ -194,94 +196,97 @@ pipeline {
             steps {
                 echo "Fase 1E: Mengambil image yang SAMA persis dari registry (commit ${env.GIT_SHA}), tanpa build ulang..."
                 withCredentials([usernamePassword(credentialsId: 'REGISTRY_CREDS', passwordVariable: 'REG_PASS', usernameVariable: 'REG_USER')]) {
-                sh '''
-                docker login ${REGISTRY} -u ${REG_USER} -p ${REG_PASS}
+                    sh '''
+                    docker login ${REGISTRY} -u ${REG_USER} -p ${REG_PASS}
 
-                docker pull ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA}
-                docker tag ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA} ${IMAGE_NAME}:${BRANCH_NAME}-${BUILD_NUMBER}
-                docker tag ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA} ${IMAGE_NAME}:${BRANCH_NAME}-latest
+                    docker pull ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA}
+                    docker tag ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA} ${IMAGE_NAME}:${BRANCH_NAME}-${BUILD_NUMBER}
+                    docker tag ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA} ${IMAGE_NAME}:${BRANCH_NAME}-latest
 
-                docker pull ${REGISTRY}/agen46-frontend:${GIT_SHA}
-                docker tag ${REGISTRY}/agen46-frontend:${GIT_SHA} agen46-frontend:${BRANCH_NAME}-latest
-                '''
+                    docker pull ${REGISTRY}/agen46-frontend:${GIT_SHA}
+                    docker tag ${REGISTRY}/agen46-frontend:${GIT_SHA} agen46-frontend:${BRANCH_NAME}-latest
+                    '''
+                }
             }
         }
 
         stage('Deploy to Development') {
-    when {
-        branch 'developmentlinux'
-        expression { params.DEPLOY_ACTION != 'Rollback' }
-    }
-    steps {
-        echo 'Deploy ke environment Development (container lokal)...'
-        withCredentials([usernamePassword(credentialsId: 'agen46-db-dev-credentials', usernameVariable: 'DB_DEV_USER', passwordVariable: 'DB_DEV_PASS')]) {
-            sh '''
-            docker network create agen46-net || true
-            docker rm -f agen46-dev || true
-            docker run -d --name agen46-dev --network agen46-net --restart unless-stopped -p 8081:8080 -e APP_ENV=development -e BUILD_NUMBER=${BUILD_NUMBER} -e DB_HOST=agen46-db-dev -e DB_PORT=5432 -e DB_NAME=agen46_dev -e DB_USER=${DB_DEV_USER} -e DB_PASSWORD=${DB_DEV_PASS} ${IMAGE_NAME}:${BRANCH_NAME}-latest
-            curl "http://localhost:9000/update?stage=development&build=${BUILD_NUMBER}"
+            when {
+                branch 'developmentlinux'
+                expression { params.DEPLOY_ACTION != 'Rollback' }
+            }
+            steps {
+                echo 'Deploy ke environment Development (container lokal)...'
+                withCredentials([usernamePassword(credentialsId: 'agen46-db-dev-credentials', usernameVariable: 'DB_DEV_USER', passwordVariable: 'DB_DEV_PASS')]) {
+                    sh '''
+                    docker network create agen46-net || true
+                    docker rm -f agen46-dev || true
+                    docker run -d --name agen46-dev --network agen46-net --restart unless-stopped -p 8081:8080 -e APP_ENV=development -e BUILD_NUMBER=${BUILD_NUMBER} -e DB_HOST=agen46-db-dev -e DB_PORT=5432 -e DB_NAME=agen46_dev -e DB_USER=${DB_DEV_USER} -e DB_PASSWORD=${DB_DEV_PASS} ${IMAGE_NAME}:${BRANCH_NAME}-latest
+                    curl "http://localhost:9000/update?stage=development&build=${BUILD_NUMBER}"
 
-            docker rm -f agen46-frontend-dev || true
-            docker run -d --name agen46-frontend-dev --network agen46-net --restart unless-stopped -p 8091:80 -e BACKEND_HOST=agen46-dev agen46-frontend:${BRANCH_NAME}-latest
-            '''
-        }
-        script {
-            echo 'Smoke test: memverifikasi endpoint Development merespons...'
-            sleep(time: 3, unit: 'SECONDS')
-            def statusCode = sh(
-                script: "curl -s -o /dev/null -w '%{http_code}' http://localhost:8081/api/v1/payments/health || true",
-                returnStdout: true
-            ).trim()
-            echo "Smoke test Development: HTTP status = ${statusCode}"
-            if (statusCode != '200') {
-                unstable("Smoke test GAGAL di Development — endpoint tidak merespons 200 (status: ${statusCode})")
-            } else {
-                echo "Smoke test LOLOS."
+                    docker rm -f agen46-frontend-dev || true
+                    docker run -d --name agen46-frontend-dev --network agen46-net --restart unless-stopped -p 8091:80 -e BACKEND_HOST=agen46-dev agen46-frontend:${BRANCH_NAME}-latest
+                    '''
+                }
+                script {
+                    echo 'Smoke test: memverifikasi endpoint Development merespons...'
+                    sleep(time: 3, unit: 'SECONDS')
+                    def statusCode = sh(
+                        script: "curl -s -o /dev/null -w '%{http_code}' http://localhost:8081/api/v1/payments/health || true",
+                        returnStdout: true
+                    ).trim()
+                    echo "Smoke test Development: HTTP status = ${statusCode}"
+                    if (statusCode != '200') {
+                        unstable("Smoke test GAGAL di Development — endpoint tidak merespons 200 (status: ${statusCode})")
+                    } else {
+                        echo "Smoke test LOLOS."
+                    }
+                }
             }
         }
-    }
-}
-      stage('Approval for Testing') {
-    when {
-        branch 'testing'
-        expression { params.DEPLOY_ACTION != 'Rollback' }
-    }
-    steps {
-        echo 'Menunggu otorisasi sebelum masuk ke environment Testing...'
-        input message: 'Build sudah lolos Quality Gate, Security Scan, dan Promote Image. Setujui deployment ke Testing?', ok: 'Deploy ke Testing'
-    }
-}
-       stage('Deploy to Testing') {
-    when {
-        branch 'testing'
-        expression { params.DEPLOY_ACTION != 'Rollback' }
-    }
-    steps {
-        echo 'Deploy ke environment Testing/SIT (container lokal, image hasil promote dari Development)...'
-        sh '''
-        docker rm -f agen46-testing || true
-        docker run -d --name agen46-testing --restart unless-stopped -p 8082:8080 -e APP_ENV=testing -e BUILD_NUMBER=${BUILD_NUMBER} ${IMAGE_NAME}:testing-latest
-        curl "http://localhost:9000/update?stage=testing&build=${BUILD_NUMBER}"
 
-        docker rm -f agen46-frontend-dev || true
-        docker run -d --name agen46-frontend-dev --network agen46-net --restart unless-stopped -p 8091:80 -e BACKEND_HOST=agen46-dev agen46-frontend:${BRANCH_NAME}-latest
-        '''
-        script {
-            echo 'Smoke test: memverifikasi endpoint testing merespons...'
-            sleep(time: 3, unit: 'SECONDS')
-            def statusCode = sh(
-                script: "curl -s -o /dev/null -w '%{http_code}' http://localhost:8082/api/v1/payments/health || true",
-                returnStdout: true
-            ).trim()
-            echo "Smoke test Testing: HTTP status = ${statusCode}"
-            if (statusCode != '200') {
-                unstable("Smoke test GAGAL di Testing — endpoint tidak merespons 200 (status: ${statusCode})")
-            } else {
-                echo "Smoke test LOLOS."
+        stage('Approval for Testing') {
+            when {
+                branch 'testing'
+                expression { params.DEPLOY_ACTION != 'Rollback' }
+            }
+            steps {
+                echo 'Menunggu otorisasi sebelum masuk ke environment Testing...'
+                input message: 'Build sudah lolos Quality Gate, Security Scan, dan Promote Image. Setujui deployment ke Testing?', ok: 'Deploy ke Testing'
             }
         }
-    }
-}
+
+        stage('Deploy to Testing') {
+            when {
+                branch 'testing'
+                expression { params.DEPLOY_ACTION != 'Rollback' }
+            }
+            steps {
+                echo 'Deploy ke environment Testing/SIT (container lokal, image hasil promote dari Development)...'
+                sh '''
+                docker rm -f agen46-testing || true
+                docker run -d --name agen46-testing --restart unless-stopped -p 8082:8080 -e APP_ENV=testing -e BUILD_NUMBER=${BUILD_NUMBER} ${IMAGE_NAME}:testing-latest
+                curl "http://localhost:9000/update?stage=testing&build=${BUILD_NUMBER}"
+
+                docker rm -f agen46-frontend-dev || true
+                docker run -d --name agen46-frontend-dev --network agen46-net --restart unless-stopped -p 8091:80 -e BACKEND_HOST=agen46-dev agen46-frontend:${BRANCH_NAME}-latest
+                '''
+                script {
+                    echo 'Smoke test: memverifikasi endpoint testing merespons...'
+                    sleep(time: 3, unit: 'SECONDS')
+                    def statusCode = sh(
+                        script: "curl -s -o /dev/null -w '%{http_code}' http://localhost:8082/api/v1/payments/health || true",
+                        returnStdout: true
+                    ).trim()
+                    echo "Smoke test Testing: HTTP status = ${statusCode}"
+                    if (statusCode != '200') {
+                        unstable("Smoke test GAGAL di Testing — endpoint tidak merespons 200 (status: ${statusCode})")
+                    } else {
+                        echo "Smoke test LOLOS."
+                    }
+                }
+            }
+        }
 
         stage('Approval for Production') {
             when {
