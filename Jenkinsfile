@@ -240,13 +240,14 @@ pipeline {
 
                     # 4. Buat konfigurasi Nginx Load Balancer (Menggunakan echo beruntun agar aman dari bug parsing Groovy)
                     echo 'upstream backend_cluster {' > nginx-lb.conf
-                    echo '    server agen46-dev-node1:8080;' >> nginx-lb.conf
-                    echo '    server agen46-dev-node2:8080;' >> nginx-lb.conf
+                    echo '    server agen46-dev-node1:8080 max_fails=1 fail_timeout=3s;' >> nginx-lb.conf
+                    echo '    server agen46-dev-node2:8080 max_fails=1 fail_timeout=3s;' >> nginx-lb.conf
                     echo '}' >> nginx-lb.conf
                     echo 'server {' >> nginx-lb.conf
                     echo '    listen 80;' >> nginx-lb.conf
                     echo '    location / {' >> nginx-lb.conf
                     echo '        proxy_pass http://backend_cluster;' >> nginx-lb.conf
+                    echo '        proxy_next_upstream error timeout invalid_header http_502 http_503 http_504;' >> nginx-lb.conf
                     echo '        proxy_set_header Host $host;' >> nginx-lb.conf
                     echo '        proxy_set_header X-Real-IP $remote_addr;' >> nginx-lb.conf
                     echo '    }' >> nginx-lb.conf
