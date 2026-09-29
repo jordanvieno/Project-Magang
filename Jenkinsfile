@@ -305,7 +305,7 @@ pipeline {
             }
             steps {
                 echo 'Deploy ke environment Testing/SIT (container lokal, image hasil promote dari Development)...'
-                withCredentials([usernamePassword(credentialsId: 'agen46-db-testing-credentials',
+                withCredentials([usernamePassword(credentialsId: 'agen46-db-test-credentials',
                         usernameVariable: 'DB_SIT_USER', passwordVariable: 'DB_SIT_PASS')]) {
                     sh '''
                     docker network create agen46-net || true
