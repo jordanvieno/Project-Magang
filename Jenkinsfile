@@ -215,7 +215,7 @@ pipeline {
                 branch 'developmentlinux'
                 expression { params.DEPLOY_ACTION != 'Rollback' }
             }
-                    steps {
+            steps {
                 echo 'Deploy ke environment Development (Arsitektur High Availability: 2 Backend + 1 Nginx LB)...'
                 withCredentials([usernamePassword(credentialsId: 'agen46-db-dev-credentials', usernameVariable: 'DB_DEV_USER', passwordVariable: 'DB_DEV_PASS')]) {
                     sh '''
@@ -226,66 +226,35 @@ pipeline {
                     
                     # 2. Jalankan Node 1
                     docker run -d --name agen46-dev-node1 --network agen46-net --restart unless-stopped \
-                    -e APP_ENV=development -e BUILD_NUMBER=${BUILD_NUMBER} \
-                    -e DB_HOST=agen46-db-dev -e DB_PORT=5432 -e DB_NAME=agen46_dev \
-                    -e DB_USER=${DB_DEV_USER} -e DB_PASSWORD=${DB_DEV_PASS} \
-                    ${IMAGE_NAME}:${BRANCH_NAME}-latest
+                      -e APP_ENV=development -e BUILD_NUMBER=${BUILD_NUMBER} \
+                      -e DB_HOST=agen46-db-dev -e DB_PORT=5432 -e DB_NAME=agen46_dev \
+                      -e DB_USER=${DB_DEV_USER} -e DB_PASSWORD=${DB_DEV_PASS} \
+                      ${IMAGE_NAME}:${BRANCH_NAME}-latest
                     
                     # 3. Jalankan Node 2
                     docker run -d --name agen46-dev-node2 --network agen46-net --restart unless-stopped \
-                    -e APP_ENV=development -e BUILD_NUMBER=${BUILD_NUMBER} \
-                    -e DB_HOST=agen46-db-dev -e DB_PORT=5432 -e DB_NAME=agen46_dev \
-                    -e DB_USER=${DB_DEV_USER} -e DB_PASSWORD=${DB_DEV_PASS} \
-                    ${IMAGE_NAME}:${BRANCH_NAME}-latest
+                      -e APP_ENV=development -e BUILD_NUMBER=${BUILD_NUMBER} \
+                      -e DB_HOST=agen46-db-dev -e DB_PORT=5432 -e DB_NAME=agen46_dev \
+                      -e DB_USER=${DB_DEV_USER} -e DB_PASSWORD=${DB_DEV_PASS} \
+                      ${IMAGE_NAME}:${BRANCH_NAME}-latest
 
-                    # 4. Buat konfigurasi Nginx Load Balancer secara dinamis
-                    cat <<EOF > nginx-lb.conf
-                    upstream backend_cluster {
-                        server agen46-dev-node1:8080;
-                        server agen46-dev-node2:8080;
-                    # 5. Jalankan Nginx Load Balancer
-                        docker run -d --name agen46-dev --network agen46-net --restart unless-stopped -p 8081:80 \
-                        -v $(pwd)/nginx-lb.conf:/etc/nginx/conf.d/default.conf nginx:alpine
-
-                        # Kirim status rilis
-                        curl -s "http://localhost:9000/update?stage=development&build=${BUILD_NUMBER}" || true
-
-                        # 6. Restart Frontend agar menautkan ulang koneksi ke Load Balancer
-                        docker rm -f agen46-frontend-dev || true
-                        docker run -d --name agen46-frontend-dev --network agen46-net --restart unless-stopped -p 8091:80 \
-                        -e BACKEND_HOST=agen46-dev agen46-frontend:${BRANCH_NAME}-latest
-                        '''
-                    }
-                    script {
-                        echo 'Smoke test: memverifikasi endpoint LB Development merespons...'
-                        sleep(time: 5, unit: 'SECONDS')
-                        def statusCode = sh(
-                            script: "curl -s -o /dev/null -w '%{http_code}' http://localhost:8081/api/v1/payments/health || true",
-                            returnStdout: true
-                        ).trim()
-                        echo "Smoke test LB Development: HTTP status = ${statusCode}"
-                        if (statusCode != '200') {
-                            unstable("Smoke test LB GAGAL — endpoint tidak merespons 200 (status: ${statusCode})")
-                        } else {
-                            echo "Smoke test LB LOLOS."
-                        }
-                    }
-                }
-            }
-        }
-        server {
-            listen 80;
-            location / {
-                proxy_pass http://backend_cluster;
-                proxy_set_header Host \$host;
-                proxy_set_header X-Real-IP \$remote_addr;
-            }
-        }
-        EOF
+                    # 4. Buat konfigurasi Nginx Load Balancer (Menggunakan echo beruntun agar aman dari bug parsing Groovy)
+                    echo 'upstream backend_cluster {' > nginx-lb.conf
+                    echo '    server agen46-dev-node1:8080;' >> nginx-lb.conf
+                    echo '    server agen46-dev-node2:8080;' >> nginx-lb.conf
+                    echo '}' >> nginx-lb.conf
+                    echo 'server {' >> nginx-lb.conf
+                    echo '    listen 80;' >> nginx-lb.conf
+                    echo '    location / {' >> nginx-lb.conf
+                    echo '        proxy_pass http://backend_cluster;' >> nginx-lb.conf
+                    echo '        proxy_set_header Host $host;' >> nginx-lb.conf
+                    echo '        proxy_set_header X-Real-IP $remote_addr;' >> nginx-lb.conf
+                    echo '    }' >> nginx-lb.conf
+                    echo '}' >> nginx-lb.conf
 
                     # 5. Jalankan Nginx Load Balancer (menggunakan nama agen46-dev agar frontend tetap terkoneksi)
                     docker run -d --name agen46-dev --network agen46-net --restart unless-stopped -p 8081:80 \
-                    -v $(pwd)/nginx-lb.conf:/etc/nginx/conf.d/default.conf nginx:alpine
+                      -v $(pwd)/nginx-lb.conf:/etc/nginx/conf.d/default.conf nginx:alpine
 
                     # Kirim status rilis
                     curl -s "http://localhost:9000/update?stage=development&build=${BUILD_NUMBER}" || true
@@ -293,7 +262,7 @@ pipeline {
                     # 6. Restart Frontend agar menautkan ulang koneksi ke Load Balancer
                     docker rm -f agen46-frontend-dev || true
                     docker run -d --name agen46-frontend-dev --network agen46-net --restart unless-stopped -p 8091:80 \
-                    -e BACKEND_HOST=agen46-dev agen46-frontend:${BRANCH_NAME}-latest
+                      -e BACKEND_HOST=agen46-dev agen46-frontend:${BRANCH_NAME}-latest
                     '''
                 }
                 script {
