@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS transaksi_agen46 (
+    id SERIAL PRIMARY KEY,
+    nomor_referensi VARCHAR(50) NOT NULL UNIQUE,
+    nominal DECIMAL(15, 2) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    waktu_transaksi TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
