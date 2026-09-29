@@ -247,7 +247,11 @@ pipeline {
                     echo '    listen 80;' >> nginx-lb.conf
                     echo '    location / {' >> nginx-lb.conf
                     echo '        proxy_pass http://backend_cluster;' >> nginx-lb.conf
+                    echo '        proxy_connect_timeout 2s;' >> nginx-lb.conf
+                    echo '        proxy_send_timeout 2s;' >> nginx-lb.conf
+                    echo '        proxy_read_timeout 2s;' >> nginx-lb.conf
                     echo '        proxy_next_upstream error timeout invalid_header http_502 http_503 http_504;' >> nginx-lb.conf
+                    echo '        proxy_next_upstream_tries 2;' >> nginx-lb.conf
                     echo '        proxy_set_header Host $host;' >> nginx-lb.conf
                     echo '        proxy_set_header X-Real-IP $remote_addr;' >> nginx-lb.conf
                     echo '    }' >> nginx-lb.conf
