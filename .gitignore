@@ -4,3 +4,4 @@ target/
 *.iml
 app.log
 dependency-reduced-pom.xml
+auth/
