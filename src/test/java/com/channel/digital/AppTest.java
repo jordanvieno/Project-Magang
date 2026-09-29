@@ -108,6 +108,19 @@ class AppTest {
         }
     }
 
+    @Test
+    void healthEndpoint_shouldReturn503_whenDbDown() throws Exception {
+        App.dbCheck = () -> false;
+        try {
+            HttpResponse<String> response = get("/api/v1/payments/health");
+            assertEquals(503, response.statusCode());
+            assertTrue(response.body().contains("\"database\":\"DOWN\""));
+            assertTrue(response.body().contains("\"status\":\"DEGRADED\""));
+        } finally {
+            App.dbCheck = App::isDatabaseHealthy;
+        }
+    }
+
     private HttpResponse<String> get(String path) throws Exception {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("http://localhost:" + PORT + path))

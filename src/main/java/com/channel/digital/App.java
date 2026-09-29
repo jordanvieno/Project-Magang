@@ -29,6 +29,8 @@ public class App {
         startServer(port);
     }
 
+    static java.util.function.BooleanSupplier dbCheck = App::isDatabaseHealthy;
+
     public static HttpServer startServer(int port) throws IOException {
         HttpServer server = createServer(port);
         server.setExecutor(null);
@@ -43,7 +45,7 @@ public class App {
         String host = System.getenv().getOrDefault("DB_HOST", "localhost");
         String port = System.getenv().getOrDefault("DB_PORT", "5432");
         String name = System.getenv().getOrDefault("DB_NAME", "agen46_dev");
-        return "jdbc:postgresql://" + host + ":" + port + "/" + name;
+        return "jdbc:postgresql://" + host + ":" + port + "/" + name + "?connectTimeout=2&socketTimeout=3";
     }
 
     static Connection getDbConnection() throws SQLException {
@@ -148,12 +150,12 @@ public class App {
         server.createContext("/api/v1/payments/health", exchange -> {
             long start = System.currentTimeMillis();
             healthRequestCount.incrementAndGet();
-            boolean dbUp = isDatabaseHealthy();
-            String status = dbUp ? "UP" : "DEGRADED";
-            String response = "{\"status\":\"" + status + "\",\"environment\":\"" + finalEnv
+            boolean dbUp = dbCheck.getAsBoolean();
+            int statusCode = dbUp ? 200 : 503;
+            String response = "{\"status\":\"" + (dbUp ? "UP" : "DEGRADED") + "\",\"environment\":\"" + finalEnv
                     + "\",\"database\":\"" + (dbUp ? "UP" : "DOWN") + "\"}";
             exchange.getResponseHeaders().set("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, response.getBytes().length);
+            exchange.sendResponseHeaders(statusCode, response.getBytes().length);
             try (OutputStream os = exchange.getResponseBody()) {
                 os.write(response.getBytes());
             }
