@@ -157,7 +157,7 @@ pipeline {
             }
             steps {
                 echo 'Fase 1D: Memindai image Docker dengan Trivy untuk kerentanan (CVE)...'
-                
+
                 echo '[Scan 1] Informational (HIGH) - Menampilkan log kerentanan, pipeline jalan terus'
                 sh '''
                 docker run --rm \
@@ -220,17 +220,17 @@ pipeline {
                 withCredentials([usernamePassword(credentialsId: 'agen46-db-dev-credentials', usernameVariable: 'DB_DEV_USER', passwordVariable: 'DB_DEV_PASS')]) {
                     sh '''
                     docker network create agen46-net || true
-                    
+
                     # 1. Bersihkan semua kontainer backend & LB lama
                     docker rm -f agen46-dev-node1 agen46-dev-node2 agen46-dev || true
-                    
+
                     # 2. Jalankan Node 1
                     docker run -d --name agen46-dev-node1 --network agen46-net --restart unless-stopped \
                       -e APP_ENV=development -e BUILD_NUMBER=${BUILD_NUMBER} \
                       -e DB_HOST=agen46-db-dev -e DB_PORT=5432 -e DB_NAME=agen46_dev \
                       -e DB_USER=${DB_DEV_USER} -e DB_PASSWORD=${DB_DEV_PASS} \
                       ${IMAGE_NAME}:${BRANCH_NAME}-latest
-                    
+
                     # 3. Jalankan Node 2
                     docker run -d --name agen46-dev-node2 --network agen46-net --restart unless-stopped \
                       -e APP_ENV=development -e BUILD_NUMBER=${BUILD_NUMBER} \
@@ -298,101 +298,46 @@ pipeline {
             }
         }
 
-        stage('Deploy to Production') {
-    when { branch 'production' }
-    steps {
-        script {
-            withCredentials([usernamePassword(credentialsId: 'agen46-db-prod-credentials',
-                    usernameVariable: 'DB_PROD_USER', passwordVariable: 'DB_PROD_PASS')]) {
-
-                if (params.DEPLOY_ACTION == 'Rollback') {
-                    if (!(params.ROLLBACK_VERSION ==~ /\d+/)) {
-                        error("ROLLBACK_VERSION harus berupa angka, bukan '${params.ROLLBACK_VERSION}'")
-                    }
-                    echo "ROLLBACK MANUAL ke versi production-${params.ROLLBACK_VERSION}..."
+        stage('Deploy to Testing') {
+            when {
+                branch 'testing'
+                expression { params.DEPLOY_ACTION != 'Rollback' }
+            }
+            steps {
+                echo 'Deploy ke environment Testing/SIT (container lokal, image hasil promote dari Development)...'
+                withCredentials([usernamePassword(credentialsId: 'agen46-db-testing-credentials',
+                        usernameVariable: 'DB_SIT_USER', passwordVariable: 'DB_SIT_PASS')]) {
                     sh '''
                     docker network create agen46-net || true
-                    docker rm -f agen46-prod || true
-                    docker run -d --name agen46-prod --network agen46-net --restart unless-stopped -p 8083:8080 \
-                      -e APP_ENV=production -e BUILD_NUMBER=${ROLLBACK_VERSION} \
-                      -e DB_HOST=agen46-db-prod -e DB_PORT=5432 -e DB_NAME=agen46_prod \
-                      -e DB_USER=${DB_PROD_USER} -e DB_PASSWORD=${DB_PROD_PASS} \
-                      ${IMAGE_NAME}:production-${ROLLBACK_VERSION}
-                    curl -s "http://localhost:9000/update?stage=production-rollback&build=${ROLLBACK_VERSION}" || true
+                    docker rm -f agen46-testing || true
+                    docker run -d --name agen46-testing --network agen46-net --restart unless-stopped -p 8082:8080 \
+                      -e APP_ENV=testing -e BUILD_NUMBER=${BUILD_NUMBER} \
+                      -e DB_HOST=agen46-db-testing -e DB_PORT=5432 -e DB_NAME=agen46_testing \
+                      -e DB_USER=${DB_SIT_USER} -e DB_PASSWORD=${DB_SIT_PASS} \
+                      ${IMAGE_NAME}:testing-latest
+                    curl -s "http://localhost:9000/update?stage=testing&build=${BUILD_NUMBER}" || true
+
+                    docker rm -f agen46-frontend-testing || true
+                    docker run -d --name agen46-frontend-testing --network agen46-net --restart unless-stopped -p 8092:80 \
+                      -e BACKEND_HOST=agen46-testing agen46-frontend:${BRANCH_NAME}-latest
                     '''
-                } else {
-                    echo 'Deploy ke environment Production (container lokal, image hasil promote dari Testing)...'
-                    sh '''
-                    docker network create agen46-net || true
-                    docker rm -f agen46-prod || true
-                    docker run -d --name agen46-prod --network agen46-net --restart unless-stopped -p 8083:8080 \
-                      -e APP_ENV=production -e BUILD_NUMBER=${BUILD_NUMBER} \
-                      -e DB_HOST=agen46-db-prod -e DB_PORT=5432 -e DB_NAME=agen46_prod \
-                      -e DB_USER=${DB_PROD_USER} -e DB_PASSWORD=${DB_PROD_PASS} \
-                      ${IMAGE_NAME}:production-latest
-
-                    docker rm -f agen46-frontend-prod || true
-                    docker run -d --name agen46-frontend-prod --network agen46-net --restart unless-stopped -p 8093:80 \
-                      -e BACKEND_HOST=agen46-prod agen46-frontend:production-latest
-                    '''
-
-                    echo 'Menunggu aplikasi siap, melakukan health check...'
-                    def healthy = false
-                    for (int i = 1; i <= 5; i++) {
-                        sleep(time: 3, unit: 'SECONDS')
-                        def statusCode = sh(
-                            script: "curl -s -o /dev/null -w '%{http_code}' http://localhost:8083/api/v1/payments/health || true",
-                            returnStdout: true
-                        ).trim()
-                        echo "Percobaan ${i}: HTTP status = ${statusCode}"
-                        if (statusCode == '200') {
-                            healthy = true
-                            break
-                        }
-                    }
-
-                    if (healthy) {
-                        echo "Health check LOLOS. Build ${BUILD_NUMBER} sekarang jadi versi stabil."
-                        sh '''
-                        echo ${BUILD_NUMBER} > /var/lib/jenkins/agen46-last-stable-production.txt
-                        curl -s "http://localhost:9000/update?stage=production&build=${BUILD_NUMBER}" || true
-                        '''
+                }
+                script {
+                    echo 'Smoke test: memverifikasi endpoint testing merespons...'
+                    sleep(time: 3, unit: 'SECONDS')
+                    def statusCode = sh(
+                        script: "curl -s -o /dev/null -w '%{http_code}' http://localhost:8082/api/v1/payments/health || true",
+                        returnStdout: true
+                    ).trim()
+                    echo "Smoke test Testing: HTTP status = ${statusCode}"
+                    if (statusCode != '200') {
+                        unstable("Smoke test GAGAL di Testing — endpoint tidak merespons 200 (status: ${statusCode})")
                     } else {
-                        echo "Health check GAGAL setelah 5 percobaan. Menjalankan AUTO-ROLLBACK..."
-                        def lastStable = sh(
-                            script: "cat /var/lib/jenkins/agen46-last-stable-production.txt 2>/dev/null || echo ''",
-                            returnStdout: true
-                        ).trim()
-
-                        if (lastStable == '') {
-                            error("Tidak ada versi stabil sebelumnya untuk rollback! Deployment dibatalkan, perlu intervensi manual.")
-                        } else {
-                            withEnv(["LAST_STABLE=${lastStable}"]) {
-                                sh '''
-                                docker rm -f agen46-prod || true
-                                docker run -d --name agen46-prod --network agen46-net --restart unless-stopped -p 8083:8080 \
-                                  -e APP_ENV=production -e BUILD_NUMBER=${LAST_STABLE} \
-                                  -e DB_HOST=agen46-db-prod -e DB_PORT=5432 -e DB_NAME=agen46_prod \
-                                  -e DB_USER=${DB_PROD_USER} -e DB_PASSWORD=${DB_PROD_PASS} \
-                                  ${IMAGE_NAME}:production-${LAST_STABLE}
-                                curl -s "http://localhost:9000/update?stage=production-rollback-auto&build=${LAST_STABLE}" || true
-                                '''
-                            }
-                            withCredentials([string(credentialsId: 'Token_Bot_Telegram', variable: 'TG_TOKEN'), string(credentialsId: 'Telegram-Chat-ID', variable: 'TG_CHAT')]) {
-                                sh """
-                                curl -s -X POST "https://api.telegram.org/bot\${TG_TOKEN}/sendMessage" \
-                                    -d chat_id=\${TG_CHAT} \
-                                    -d text="⚠️ AUTO-ROLLBACK terjadi di Production! Build #${BUILD_NUMBER} gagal health check, otomatis kembali ke build stabil #${lastStable}"
-                                """
-                            }
-                            error("Auto-rollback dijalankan ke build ${lastStable} karena health check build ${BUILD_NUMBER} gagal.")
-                        }
+                        echo "Smoke test LOLOS."
                     }
                 }
             }
         }
-    }
-}
 
         stage('Approval for Production') {
             when {
@@ -405,101 +350,102 @@ pipeline {
             }
         }
 
-       stage('Deploy to Production') {
-    when { branch 'production' }
-    steps {
-        script {
-            withCredentials([usernamePassword(credentialsId: 'agen46-db-prod-credentials',
-                    usernameVariable: 'DB_PROD_USER', passwordVariable: 'DB_PROD_PASS')]) {
+        stage('Deploy to Production') {
+            when { branch 'production' }
+            steps {
+                script {
+                    withCredentials([usernamePassword(credentialsId: 'agen46-db-prod-credentials',
+                            usernameVariable: 'DB_PROD_USER', passwordVariable: 'DB_PROD_PASS')]) {
 
-                if (params.DEPLOY_ACTION == 'Rollback') {
-                    if (!(params.ROLLBACK_VERSION ==~ /\d+/)) {
-                        error("ROLLBACK_VERSION harus berupa angka, bukan '${params.ROLLBACK_VERSION}'")
-                    }
-                    echo "ROLLBACK MANUAL ke versi production-${params.ROLLBACK_VERSION}..."
-                    sh '''
-                    docker network create agen46-net || true
-                    docker rm -f agen46-prod || true
-                    docker run -d --name agen46-prod --network agen46-net --restart unless-stopped -p 8083:8080 \
-                      -e APP_ENV=production -e BUILD_NUMBER=${ROLLBACK_VERSION} \
-                      -e DB_HOST=agen46-db-prod -e DB_PORT=5432 -e DB_NAME=agen46_prod \
-                      -e DB_USER=${DB_PROD_USER} -e DB_PASSWORD=${DB_PROD_PASS} \
-                      ${IMAGE_NAME}:production-${ROLLBACK_VERSION}
-                    curl -s "http://localhost:9000/update?stage=production-rollback&build=${ROLLBACK_VERSION}" || true
-                    '''
-                } else {
-                    echo 'Deploy ke environment Production (container lokal, image hasil promote dari Testing)...'
-                    sh '''
-                    docker network create agen46-net || true
-                    docker rm -f agen46-prod || true
-                    docker run -d --name agen46-prod --network agen46-net --restart unless-stopped -p 8083:8080 \
-                      -e APP_ENV=production -e BUILD_NUMBER=${BUILD_NUMBER} \
-                      -e DB_HOST=agen46-db-prod -e DB_PORT=5432 -e DB_NAME=agen46_prod \
-                      -e DB_USER=${DB_PROD_USER} -e DB_PASSWORD=${DB_PROD_PASS} \
-                      ${IMAGE_NAME}:production-latest
-
-                    docker rm -f agen46-frontend-prod || true
-                    docker run -d --name agen46-frontend-prod --network agen46-net --restart unless-stopped -p 8093:80 \
-                      -e BACKEND_HOST=agen46-prod agen46-frontend:production-latest
-                    '''
-
-                    echo 'Menunggu aplikasi siap, melakukan health check...'
-                    def healthy = false
-                    for (int i = 1; i <= 5; i++) {
-                        sleep(time: 3, unit: 'SECONDS')
-                        def statusCode = sh(
-                            script: "curl -s -o /dev/null -w '%{http_code}' http://localhost:8083/api/v1/payments/health || true",
-                            returnStdout: true
-                        ).trim()
-                        echo "Percobaan ${i}: HTTP status = ${statusCode}"
-                        if (statusCode == '200') {
-                            healthy = true
-                            break
-                        }
-                    }
-
-                    if (healthy) {
-                        echo "Health check LOLOS. Build ${BUILD_NUMBER} sekarang jadi versi stabil."
-                        sh '''
-                        echo ${BUILD_NUMBER} > /var/lib/jenkins/agen46-last-stable-production.txt
-                        curl -s "http://localhost:9000/update?stage=production&build=${BUILD_NUMBER}" || true
-                        '''
-                    } else {
-                        echo "Health check GAGAL setelah 5 percobaan. Menjalankan AUTO-ROLLBACK..."
-                        def lastStable = sh(
-                            script: "cat /var/lib/jenkins/agen46-last-stable-production.txt 2>/dev/null || echo ''",
-                            returnStdout: true
-                        ).trim()
-
-                        if (lastStable == '') {
-                            error("Tidak ada versi stabil sebelumnya untuk rollback! Deployment dibatalkan, perlu intervensi manual.")
+                        if (params.DEPLOY_ACTION == 'Rollback') {
+                            if (!(params.ROLLBACK_VERSION ==~ /\d+/)) {
+                                error("ROLLBACK_VERSION harus berupa angka, bukan '${params.ROLLBACK_VERSION}'")
+                            }
+                            echo "ROLLBACK MANUAL ke versi production-${params.ROLLBACK_VERSION}..."
+                            sh '''
+                            docker network create agen46-net || true
+                            docker rm -f agen46-prod || true
+                            docker run -d --name agen46-prod --network agen46-net --restart unless-stopped -p 8083:8080 \
+                              -e APP_ENV=production -e BUILD_NUMBER=${ROLLBACK_VERSION} \
+                              -e DB_HOST=agen46-db-prod -e DB_PORT=5432 -e DB_NAME=agen46_prod \
+                              -e DB_USER=${DB_PROD_USER} -e DB_PASSWORD=${DB_PROD_PASS} \
+                              ${IMAGE_NAME}:production-${ROLLBACK_VERSION}
+                            curl -s "http://localhost:9000/update?stage=production-rollback&build=${ROLLBACK_VERSION}" || true
+                            '''
                         } else {
-                            withEnv(["LAST_STABLE=${lastStable}"]) {
+                            echo 'Deploy ke environment Production (container lokal, image hasil promote dari Testing)...'
+                            sh '''
+                            docker network create agen46-net || true
+                            docker rm -f agen46-prod || true
+                            docker run -d --name agen46-prod --network agen46-net --restart unless-stopped -p 8083:8080 \
+                              -e APP_ENV=production -e BUILD_NUMBER=${BUILD_NUMBER} \
+                              -e DB_HOST=agen46-db-prod -e DB_PORT=5432 -e DB_NAME=agen46_prod \
+                              -e DB_USER=${DB_PROD_USER} -e DB_PASSWORD=${DB_PROD_PASS} \
+                              ${IMAGE_NAME}:production-latest
+
+                            docker rm -f agen46-frontend-prod || true
+                            docker run -d --name agen46-frontend-prod --network agen46-net --restart unless-stopped -p 8093:80 \
+                              -e BACKEND_HOST=agen46-prod agen46-frontend:production-latest
+                            '''
+
+                            echo 'Menunggu aplikasi siap, melakukan health check...'
+                            def healthy = false
+                            for (int i = 1; i <= 5; i++) {
+                                sleep(time: 3, unit: 'SECONDS')
+                                def statusCode = sh(
+                                    script: "curl -s -o /dev/null -w '%{http_code}' http://localhost:8083/api/v1/payments/health || true",
+                                    returnStdout: true
+                                ).trim()
+                                echo "Percobaan ${i}: HTTP status = ${statusCode}"
+                                if (statusCode == '200') {
+                                    healthy = true
+                                    break
+                                }
+                            }
+
+                            if (healthy) {
+                                echo "Health check LOLOS. Build ${BUILD_NUMBER} sekarang jadi versi stabil."
                                 sh '''
-                                docker rm -f agen46-prod || true
-                                docker run -d --name agen46-prod --network agen46-net --restart unless-stopped -p 8083:8080 \
-                                  -e APP_ENV=production -e BUILD_NUMBER=${LAST_STABLE} \
-                                  -e DB_HOST=agen46-db-prod -e DB_PORT=5432 -e DB_NAME=agen46_prod \
-                                  -e DB_USER=${DB_PROD_USER} -e DB_PASSWORD=${DB_PROD_PASS} \
-                                  ${IMAGE_NAME}:production-${LAST_STABLE}
-                                curl -s "http://localhost:9000/update?stage=production-rollback-auto&build=${LAST_STABLE}" || true
+                                echo ${BUILD_NUMBER} > /var/lib/jenkins/agen46-last-stable-production.txt
+                                curl -s "http://localhost:9000/update?stage=production&build=${BUILD_NUMBER}" || true
                                 '''
+                            } else {
+                                echo "Health check GAGAL setelah 5 percobaan. Menjalankan AUTO-ROLLBACK..."
+                                def lastStable = sh(
+                                    script: "cat /var/lib/jenkins/agen46-last-stable-production.txt 2>/dev/null || echo ''",
+                                    returnStdout: true
+                                ).trim()
+
+                                if (lastStable == '') {
+                                    error("Tidak ada versi stabil sebelumnya untuk rollback! Deployment dibatalkan, perlu intervensi manual.")
+                                } else {
+                                    withEnv(["LAST_STABLE=${lastStable}"]) {
+                                        sh '''
+                                        docker rm -f agen46-prod || true
+                                        docker run -d --name agen46-prod --network agen46-net --restart unless-stopped -p 8083:8080 \
+                                          -e APP_ENV=production -e BUILD_NUMBER=${LAST_STABLE} \
+                                          -e DB_HOST=agen46-db-prod -e DB_PORT=5432 -e DB_NAME=agen46_prod \
+                                          -e DB_USER=${DB_PROD_USER} -e DB_PASSWORD=${DB_PROD_PASS} \
+                                          ${IMAGE_NAME}:production-${LAST_STABLE}
+                                        curl -s "http://localhost:9000/update?stage=production-rollback-auto&build=${LAST_STABLE}" || true
+                                        '''
+                                    }
+                                    withCredentials([string(credentialsId: 'Token_Bot_Telegram', variable: 'TG_TOKEN'), string(credentialsId: 'Telegram-Chat-ID', variable: 'TG_CHAT')]) {
+                                        sh """
+                                        curl -s -X POST "https://api.telegram.org/bot\${TG_TOKEN}/sendMessage" \
+                                            -d chat_id=\${TG_CHAT} \
+                                            -d text="⚠️ AUTO-ROLLBACK terjadi di Production! Build #${BUILD_NUMBER} gagal health check, otomatis kembali ke build stabil #${lastStable}"
+                                        """
+                                    }
+                                    error("Auto-rollback dijalankan ke build ${lastStable} karena health check build ${BUILD_NUMBER} gagal.")
+                                }
                             }
-                            withCredentials([string(credentialsId: 'Token_Bot_Telegram', variable: 'TG_TOKEN'), string(credentialsId: 'Telegram-Chat-ID', variable: 'TG_CHAT')]) {
-                                sh """
-                                curl -s -X POST "https://api.telegram.org/bot\${TG_TOKEN}/sendMessage" \
-                                    -d chat_id=\${TG_CHAT} \
-                                    -d text="⚠️ AUTO-ROLLBACK terjadi di Production! Build #${BUILD_NUMBER} gagal health check, otomatis kembali ke build stabil #${lastStable}"
-                                """
-                            }
-                            error("Auto-rollback dijalankan ke build ${lastStable} karena health check build ${BUILD_NUMBER} gagal.")
                         }
                     }
                 }
             }
         }
     }
-}
 
     post {
         success {
