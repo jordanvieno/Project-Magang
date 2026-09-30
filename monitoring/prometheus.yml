@@ -3,5 +3,21 @@ global:
 
 scrape_configs:
   - job_name: "agen46-backend"
+    metrics_path: /metrics
     static_configs:
-      - targets: ["agen46-dev:8080"]
+      - targets: ["agen46-dev-node1:8080"]
+        labels:
+          env: "development"
+          instance_name: "dev-node1"
+      - targets: ["agen46-dev-node2:8080"]
+        labels:
+          env: "development"
+          instance_name: "dev-node2"
+      - targets: ["agen46-testing:8080"]
+        labels:
+          env: "testing"
+          instance_name: "testing"
+      - targets: ["agen46-prod:8080"]
+        labels:
+          env: "production"
+          instance_name: "prod"
