@@ -304,17 +304,10 @@ pipeline {
                 branch 'testing'
                 expression { params.DEPLOY_ACTION != 'Rollback' }
             }
-        steps {
-            echo 'Menunggu otorisasi sebelum masuk ke environment Testing...'
-            withCredentials([string(credentialsId: 'Token_Bot_Telegram', variable: 'TG_TOKEN'), string(credentialsId: 'Telegram-Chat-ID', variable: 'TG_CHAT')]) {
-                sh """
-                curl -s -X POST "https://api.telegram.org/bot\${TG_TOKEN}/sendMessage" \
-                    -d chat_id=\${TG_CHAT} \
-                    -d text="⏳ Menunggu APPROVAL Testing. Branch: ${env.BRANCH_NAME}, build #${env.BUILD_NUMBER}. Buka: ${env.BUILD_URL}input/"
-                """
+            steps {
+                echo 'Menunggu otorisasi sebelum masuk ke environment Testing...'
+                input message: 'Build sudah lolos Quality Gate, Security Scan, dan Promote Image. Setujui deployment ke Testing?', ok: 'Deploy ke Testing'
             }
-            input message: 'Build sudah lolos Quality Gate, Security Scan, dan Promote Image. Setujui deployment ke Testing?', ok: 'Deploy ke Testing'
-          }
         }
 
         stage('Deploy to Testing') {
