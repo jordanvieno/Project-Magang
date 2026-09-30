@@ -119,7 +119,7 @@ pipeline {
                         echo 'Fase 1B: Membangun image frontend (nginx + static assets)...'
                         withCredentials([usernamePassword(credentialsId: 'REGISTRY_CREDS', passwordVariable: 'REG_PASS', usernameVariable: 'REG_USER')]) {
                             sh '''
-                            docker login ${REGISTRY} -u ${REG_USER} -p ${REG_PASS}
+                            docker login ${REGISTRY} -u ${REG_USER} -p ${REG_PASS} --password-stdin
                             cd frontend
                             docker build --no-cache -t agen46-frontend:${GIT_SHA} -t ${REGISTRY}/agen46-frontend:${GIT_SHA} .
                             docker push ${REGISTRY}/agen46-frontend:${GIT_SHA}
@@ -140,7 +140,7 @@ pipeline {
                 echo 'Fase 1C: Membungkus artefak menjadi Docker Image (single source of truth), push ke registry...'
                 withCredentials([usernamePassword(credentialsId: 'REGISTRY_CREDS', passwordVariable: 'REG_PASS', usernameVariable: 'REG_USER')]) {
                     sh '''
-                    docker login ${REGISTRY} -u ${REG_USER} -p ${REG_PASS}
+                    docker login ${REGISTRY} -u ${REG_USER} -p ${REG_PASS} --password-stdin
                     docker build --no-cache -t ${IMAGE_NAME}:${GIT_SHA} -t ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA} .
                     docker push ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA}
                     docker tag ${IMAGE_NAME}:${GIT_SHA} ${IMAGE_NAME}:${BRANCH_NAME}-${BUILD_NUMBER}
@@ -197,7 +197,7 @@ pipeline {
                 echo "Fase 1E: Mengambil image yang SAMA persis dari registry (commit ${env.GIT_SHA}), tanpa build ulang..."
                 withCredentials([usernamePassword(credentialsId: 'REGISTRY_CREDS', passwordVariable: 'REG_PASS', usernameVariable: 'REG_USER')]) {
                     sh '''
-                    docker login ${REGISTRY} -u ${REG_USER} -p ${REG_PASS}
+                    docker login ${REGISTRY} -u ${REG_USER} -p ${REG_PASS} --password-stdin
 
                     docker pull ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA}
                     docker tag ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA} ${IMAGE_NAME}:${BRANCH_NAME}-${BUILD_NUMBER}
@@ -220,7 +220,19 @@ pipeline {
                 withCredentials([usernamePassword(credentialsId: 'agen46-db-dev-credentials', usernameVariable: 'DB_DEV_USER', passwordVariable: 'DB_DEV_PASS')]) {
                     sh '''
                     docker network create agen46-net || true
+                    docker inspect agen46-db-dev >/dev/null 2>&1 || \
+                    docker run -d --name agen46-db-dev --network agen46-net --restart unless-stopped \
+                    -p 5433:5432 \
+                    -e POSTGRES_USER=${DB_DEV_USER} -e POSTGRES_PASSWORD=${DB_DEV_PASS} \
+                    -e POSTGRES_DB=agen46_dev \
+                    -v agen46-db-dev-data:/var/lib/postgresql/data \
+                    postgres:16-alpine
 
+                    for i in $(seq 1 30); do
+                    docker exec agen46-db-dev pg_isready -U ${DB_DEV_USER} -d agen46_dev >/dev/null 2>&1 && break
+                    sleep 1
+                    done
+                    
                     # 1. Bersihkan semua kontainer backend & LB lama
                     docker rm -f agen46-dev-node1 agen46-dev-node2 agen46-dev || true
 
