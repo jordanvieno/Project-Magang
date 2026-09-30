@@ -309,29 +309,46 @@ pipeline {
                         usernameVariable: 'DB_SIT_USER', passwordVariable: 'DB_SIT_PASS')]) {
                     sh '''
                     docker network create agen46-net || true
+
+                    docker inspect agen46-db-testing >/dev/null 2>&1 || \
+                    docker run -d --name agen46-db-testing --network agen46-net --restart unless-stopped \
+                    -e POSTGRES_USER=${DB_SIT_USER} -e POSTGRES_PASSWORD=${DB_SIT_PASS} \
+                    -e POSTGRES_DB=agen46_testing \
+                    -v agen46-db-testing-data:/var/lib/postgresql/data \
+                    postgres:16-alpine
+
+                    for i in $(seq 1 20); do
+                    docker exec agen46-db-testing pg_isready -U ${DB_SIT_USER} -d agen46_testing >/dev/null 2>&1 && break
+                    sleep 1
+                    done
+
                     docker rm -f agen46-testing || true
                     docker run -d --name agen46-testing --network agen46-net --restart unless-stopped -p 8082:8080 \
-                      -e APP_ENV=testing -e BUILD_NUMBER=${BUILD_NUMBER} \
-                      -e DB_HOST=agen46-db-testing -e DB_PORT=5432 -e DB_NAME=agen46_testing \
-                      -e DB_USER=${DB_SIT_USER} -e DB_PASSWORD=${DB_SIT_PASS} \
-                      ${IMAGE_NAME}:testing-latest
+                    -e APP_ENV=testing -e BUILD_NUMBER=${BUILD_NUMBER} \
+                    -e DB_HOST=agen46-db-testing -e DB_PORT=5432 -e DB_NAME=agen46_testing \
+                    -e DB_USER=${DB_SIT_USER} -e DB_PASSWORD=${DB_SIT_PASS} \
+                    ${IMAGE_NAME}:testing-latest
                     curl -s "http://localhost:9000/update?stage=testing&build=${BUILD_NUMBER}" || true
 
                     docker rm -f agen46-frontend-testing || true
                     docker run -d --name agen46-frontend-testing --network agen46-net --restart unless-stopped -p 8092:80 \
-                      -e BACKEND_HOST=agen46-testing agen46-frontend:${BRANCH_NAME}-latest
+                    -e BACKEND_HOST=agen46-testing agen46-frontend:${BRANCH_NAME}-latest
                     '''
                 }
                 script {
                     echo 'Smoke test: memverifikasi endpoint testing merespons...'
-                    sleep(time: 3, unit: 'SECONDS')
-                    def statusCode = sh(
-                        script: "curl -s -o /dev/null -w '%{http_code}' http://localhost:8082/api/v1/payments/health || true",
-                        returnStdout: true
-                    ).trim()
-                    echo "Smoke test Testing: HTTP status = ${statusCode}"
+                    def statusCode = '000'
+                    for (int i = 1; i <= 10; i++) {
+                        sleep(time: 3, unit: 'SECONDS')
+                        statusCode = sh(
+                            script: "curl -s -o /dev/null -w '%{http_code}' http://localhost:8082/api/v1/payments/health || true",
+                            returnStdout: true
+                        ).trim()
+                        echo "Percobaan ${i}: HTTP status = ${statusCode}"
+                        if (statusCode == '200') { break }
+                    }
                     if (statusCode != '200') {
-                        unstable("Smoke test GAGAL di Testing — endpoint tidak merespons 200 (status: ${statusCode})")
+                        unstable("Smoke test GAGAL di Testing (status: ${statusCode})")
                     } else {
                         echo "Smoke test LOLOS."
                     }
