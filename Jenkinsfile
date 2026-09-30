@@ -197,7 +197,7 @@ pipeline {
                 echo "Fase 1E: Mengambil image yang SAMA persis dari registry (commit ${env.GIT_SHA}), tanpa build ulang..."
                 withCredentials([usernamePassword(credentialsId: 'REGISTRY_CREDS', passwordVariable: 'REG_PASS', usernameVariable: 'REG_USER')]) {
                     sh '''
-                    echo "${REG_PASS}"docker login ${REGISTRY} -u ${REG_USER} --password-stdin
+                    echo "${REG_PASS}" | docker login ${REGISTRY} -u ${REG_USER} --password-stdin
 
                     docker pull ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA}
                     docker tag ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA} ${IMAGE_NAME}:${BRANCH_NAME}-${BUILD_NUMBER}
@@ -393,18 +393,25 @@ pipeline {
                             echo "ROLLBACK MANUAL ke versi production-${params.ROLLBACK_VERSION}..."
                             sh '''
                             docker network create agen46-net || true
+
                             docker inspect agen46-db-prod >/dev/null 2>&1 || \
                             docker run -d --name agen46-db-prod --network agen46-net --restart unless-stopped \
-                              -e POSTGRES_USER=${DB_PROD_USER} -e POSTGRES_PASSWORD=${DB_PROD_PASS} \
-                              -e POSTGRES_DB=agen46_prod \
-                              -v agen46-db-prod-data:/var/lib/postgresql/data \
+                            -e POSTGRES_USER=${DB_PROD_USER} -e POSTGRES_PASSWORD=${DB_PROD_PASS} \
+                            -e POSTGRES_DB=agen46_prod \
+                            -v agen46-db-prod-data:/var/lib/postgresql/data \
                             postgres:16-alpine
+
+                            for i in $(seq 1 30); do
+                            docker exec agen46-db-prod pg_isready -U ${DB_PROD_USER} -d agen46_prod >/dev/null 2>&1 && break
+                            sleep 1
+                            done
+
                             docker rm -f agen46-prod || true
                             docker run -d --name agen46-prod --network agen46-net --restart unless-stopped -p 8083:8080 \
-                              -e APP_ENV=production -e BUILD_NUMBER=${ROLLBACK_VERSION} \
-                              -e DB_HOST=agen46-db-prod -e DB_PORT=5432 -e DB_NAME=agen46_prod \
-                              -e DB_USER=${DB_PROD_USER} -e DB_PASSWORD=${DB_PROD_PASS} \
-                              ${IMAGE_NAME}:production-${ROLLBACK_VERSION}
+                            -e APP_ENV=production -e BUILD_NUMBER=${ROLLBACK_VERSION} \
+                            -e DB_HOST=agen46-db-prod -e DB_PORT=5432 -e DB_NAME=agen46_prod \
+                            -e DB_USER=${DB_PROD_USER} -e DB_PASSWORD=${DB_PROD_PASS} \
+                            ${IMAGE_NAME}:production-${ROLLBACK_VERSION}
                             curl -s "http://localhost:9000/update?stage=production-rollback&build=${ROLLBACK_VERSION}" || true
                             '''
                         } else {
