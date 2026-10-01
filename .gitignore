@@ -5,3 +5,6 @@ target/
 app.log
 dependency-reduced-pom.xml
 auth/
+certs/
+*.key
+*.crt
