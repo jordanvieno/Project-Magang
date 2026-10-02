@@ -15,7 +15,7 @@ pipeline {
     }
 
     parameters {
-        choice(name: 'DEPLOY_ACTION', choices: ['Release', 'Rollback'], description: 'Release = deploy versi terbaru, Rollback = kembali ke versi lama')
+        choice(name: 'DEPLOY_ACTION', choices: ['Release', 'Rollback'], description: 'Release = Deploy versi terbaru, Rollback = kembali ke versi lama')
         string(name: 'ROLLBACK_VERSION', defaultValue: '', description: 'Isi nomor build yang mau di-rollback (contoh: 6). Kosongkan kalau Release.')
     }
 
