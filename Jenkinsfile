@@ -158,7 +158,7 @@ pipeline {
             steps {
                 echo 'Fase 1D: Memindai image Docker dengan Trivy untuk kerentanan (CVE)...'
 
-                echo '[Scan 1] Informational (HIGH) - Menampilkan log kerentanan, pipeline jalan terus'
+                echo '[Scan 1] Informational (HIGH) - Menampilkan log kerentanan, Pipeline jalan terus'
                 sh '''
                 docker run --rm \
                   -v /var/run/docker.sock:/var/run/docker.sock \
