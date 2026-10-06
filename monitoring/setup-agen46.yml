@@ -4,7 +4,7 @@
   become: true
   vars:
     deploy_user: jordanvieno
-    monitoring_dir: "/mnt/c/Users/Jordan/OneDrive/Documents/Kuliah Ilmu Komputer di IPB/Magang/Project Magang Linux/Project_Magang_Linux/monitoring"
+    monitoring_dir: "{{ playbook_dir }}"
 
   tasks:
     - name: Pastikan Docker network agen46-net ada
@@ -29,6 +29,7 @@
           set -euo pipefail
 
           JAR=$(find /var/lib/jenkins/workspace \
+                -path "*developmentlinux*" \
                 -path "*/target/digital-channel-app-1.0-SNAPSHOT.jar" \
                 -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -n1 | cut -d' ' -f2-)
 

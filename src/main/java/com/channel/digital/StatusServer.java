@@ -26,25 +26,23 @@ public class StatusServer {
             String stage = "idle", build = "-";
             if (query != null) {
                 for (String param : query.split("&")) {
-                    String[] kv = param.split("=");
-                    if (kv[0].equals("stage"))
+                    String[] kv = param.split("=", 2);
+                    if (kv.length < 2) continue;
+                    if (kv[0].equals("stage") && kv[1].matches("^[a-zA-Z0-9-]+$"))
                         stage = kv[1];
-                    if (kv[0].equals("build"))
+                    if (kv[0].equals("build") && kv[1].matches("^\\d+$"))
                         build = kv[1];
                 }
             }
             currentStage.set(stage);
             currentBuild.set(build);
             String response = "OK";
-            exchange.sendResponseHeaders(200, response.getBytes().length);
-            try (OutputStream os = exchange.getResponseBody()) {
-                os.write(response.getBytes());
-            }
+            App.sendResponse(exchange, 200, response, "text/plain");
         });
 
         server.createContext("/", exchange -> {
             String stage = currentStage.get();
-            String color = resolveColor(stage);
+            String color = App.resolveColor(stage);
             String html = "<html><head><meta http-equiv='refresh' content='2'>"
                     + "<title>Pipeline Status</title></head>"
                     + "<body style='background-color:" + color
@@ -53,30 +51,11 @@ public class StatusServer {
                     + "<h2>Tahap Terakhir: " + stage.toUpperCase() + "</h2>"
                     + "<p>Build: " + currentBuild.get() + "</p>"
                     + "</body></html>";
-            exchange.getResponseHeaders().set("Content-Type", "text/html");
-            exchange.sendResponseHeaders(200, html.getBytes().length);
-            try (OutputStream os = exchange.getResponseBody()) {
-                os.write(html.getBytes());
-            }
+            App.sendResponse(exchange, 200, html, "text/html");
         });
 
         return server;
     }
 
-    static String resolveColor(String stage) {
-        switch (stage) {
-            case "development":
-                return "#e74c3c";
-            case "testing":
-                return "#f1c40f";
-            case "production":
-                return "#2ecc71";
-            case "production-rollback":
-                return "#e67e22";
-            case "production-rollback-auto":
-                return "#3498db";
-            default:
-                return "#95a5a6";
-        }
-    }
+
 }

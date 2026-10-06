@@ -1,8 +1,36 @@
+def tg(msg) {
+    withCredentials([string(credentialsId: 'Token_Bot_Telegram', variable: 'TG_TOKEN'), string(credentialsId: 'Telegram-Chat-ID', variable: 'TG_CHAT')]) {
+        sh """
+        curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \\
+            --data-urlencode "chat_id=${TG_CHAT}" \\
+            --data-urlencode "text=${msg}"
+        """
+    }
+}
+
+def ghStatus(state, desc, sha) {
+    withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
+        sh """
+        curl -s -X POST \\
+          -H "Authorization: token ${GH_TOKEN}" \\
+          -H "Accept: application/vnd.github+json" \\
+          https://api.github.com/repos/jordanvieno/Project-Magang/statuses/${sha} \\
+          -d '{"state":"${state}","context":"jenkins/quality-gate","description":"${desc}"}'
+        """
+    }
+}
+
 pipeline {
     agent any
 
+    options {
+        disableConcurrentBuilds()
+        timeout(time: 1, unit: 'HOURS')
+        buildDiscarder(logRotator(numToKeepStr: '5'))
+    }
+
     triggers {
-        pollSCM('* * * * *')
+        pollSCM('H/5 * * * *')
     }
 
     tools {
@@ -28,19 +56,13 @@ pipeline {
                     env.GIT_SHA = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
                 }
                 withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
-                    sh '''
-                    curl -s -X POST \
-                      -H "Authorization: token ${GH_TOKEN}" \
-                      -H "Accept: application/vnd.github+json" \
-                      https://api.github.com/repos/jordanvieno/Project-Magang/statuses/${GIT_SHA} \
-                      -d '{"state":"pending","context":"jenkins/quality-gate","description":"Menjalankan unit test & coverage check..."}'
-                    '''
+                    ghStatus('pending', 'Menjalankan unit test & coverage check...', env.GIT_SHA)
                 }
                 echo 'Menyiapkan PostgresSQL sementara untuk testing...'
                 withCredentials([usernamePassword(credentialsId: 'agen46-db-test-credentials', usernameVariable: 'DB_TEST_USER', passwordVariable: 'DB_TEST_PASS')]) {
                     sh '''
                     docker rm -f agen46-db-test || true
-                    docker run -d --name agen46-db-test -p 55432:5432 -e POSTGRES_USER=${DB_TEST_USER} -e POSTGRES_PASSWORD=${DB_TEST_PASS} -e POSTGRES_DB=agen46_test postgres:16-alpine
+                    docker run -d --name agen46-db-test -p 127.0.0.1:55432:5432 -e POSTGRES_USER=${DB_TEST_USER} -e POSTGRES_PASSWORD=${DB_TEST_PASS} -e POSTGRES_DB=agen46_test postgres:16-alpine
 
                     echo "Menunggu PostgreSQL siap..."
                     for i in $(seq 1 15); do
@@ -50,6 +72,7 @@ pipeline {
                         fi
                         sleep 1
                     done
+                    docker exec agen46-db-test pg_isready -U ${DB_TEST_USER} || exit 1
                     '''
                     echo 'Fase 0: Menjalankan Unit Test & Coverage Check (JUnit 5 + Jacoco)...'
                     withEnv([
@@ -70,25 +93,13 @@ pipeline {
                 success {
                     sh 'sudo /usr/local/bin/deploy-statusserver.sh'
                     withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
-                        sh '''
-                        curl -s -X POST \
-                          -H "Authorization: token ${GH_TOKEN}" \
-                          -H "Accept: application/vnd.github+json" \
-                          https://api.github.com/repos/jordanvieno/Project-Magang/statuses/${GIT_SHA} \
-                          -d '{"state":"success","context":"jenkins/quality-gate","description":"Test lolos & coverage memenuhi threshold 70%"}'
-                        '''
+                        ghStatus('success', 'Test lolos & coverage memenuhi threshold 70%', env.GIT_SHA)
                     }
                     echo 'Status Quality Gate: PASSED'
                 }
                 failure {
                     withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
-                        sh '''
-                        curl -s -X POST \
-                          -H "Authorization: token ${GH_TOKEN}" \
-                          -H "Accept: application/vnd.github+json" \
-                          https://api.github.com/repos/jordanvieno/Project-Magang/statuses/${GIT_SHA} \
-                          -d '{"state":"failure","context":"jenkins/quality-gate","description":"Test gagal atau coverage di bawah threshold"}'
-                        '''
+                        ghStatus('failure', 'Test gagal atau coverage di bawah threshold', env.GIT_SHA)
                     }
                     echo 'Status Quality Gate: FAILED — pipeline dihentikan.'
                 }
@@ -107,7 +118,7 @@ pipeline {
                         sh '''
                         mkdir -p src/main/resources/static
                         COMMIT_SHORT=$(git rev-parse --short HEAD)
-                        curl -L -o src/main/resources/static/foto.jpg "https://picsum.photos/seed/${COMMIT_SHORT}/400/300"
+                        curl -fsSL --retry 3 -o src/main/resources/static/foto.jpg "https://picsum.photos/seed/${COMMIT_SHORT}/400/300"
                         mvn package -DskipTests
                         echo "=== VERIFIKASI: cek META-INF/services di jar hasil build ==="
                         jar tf target/digital-channel-app-1.0-SNAPSHOT.jar | grep "META-INF/services" || echo "PERINGATAN: META-INF/services TIDAK DITEMUKAN di jar!"
@@ -141,10 +152,7 @@ pipeline {
                 withCredentials([usernamePassword(credentialsId: 'REGISTRY_CREDS', passwordVariable: 'REG_PASS', usernameVariable: 'REG_USER')]) {
                     sh '''
                     echo "${REG_PASS}" | docker login ${REGISTRY} -u ${REG_USER} --password-stdin
-                    docker build --no-cache -t ${IMAGE_NAME}:${GIT_SHA} -t ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA} .
-                    docker push ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA}
-                    docker tag ${IMAGE_NAME}:${GIT_SHA} ${IMAGE_NAME}:${BRANCH_NAME}-${BUILD_NUMBER}
-                    docker tag ${IMAGE_NAME}:${GIT_SHA} ${IMAGE_NAME}:${BRANCH_NAME}-latest
+                    docker build --no-cache -t ${IMAGE_NAME}:${GIT_SHA} .
                     '''
                 }
             }
@@ -182,6 +190,16 @@ pipeline {
                   --format table \
                   ${IMAGE_NAME}:${GIT_SHA}
                 '''
+
+                echo 'Fase 1D-bis: Mendorong image ke registry (Setelah lolos scan)'
+                withCredentials([usernamePassword(credentialsId: 'REGISTRY_CREDS', passwordVariable: 'REG_PASS', usernameVariable: 'REG_USER')]) {
+                    sh '''
+                    docker tag ${IMAGE_NAME}:${GIT_SHA} ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA}
+                    docker push ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA}
+                    docker tag ${IMAGE_NAME}:${GIT_SHA} ${IMAGE_NAME}:${BRANCH_NAME}-${BUILD_NUMBER}
+                    docker tag ${IMAGE_NAME}:${GIT_SHA} ${IMAGE_NAME}:${BRANCH_NAME}-latest
+                    '''
+                }
             }
         }
 
@@ -222,7 +240,7 @@ pipeline {
                     docker network create agen46-net || true
                     docker inspect agen46-db-dev >/dev/null 2>&1 || \
                     docker run -d --name agen46-db-dev --network agen46-net --restart unless-stopped \
-                    -p 5433:5432 \
+                    -p 127.0.0.1:5433:5432 \
                     -e POSTGRES_USER=${DB_DEV_USER} -e POSTGRES_PASSWORD=${DB_DEV_PASS} \
                     -e POSTGRES_DB=agen46_dev \
                     -v agen46-db-dev-data:/var/lib/postgresql/data \
@@ -232,6 +250,7 @@ pipeline {
                     docker exec agen46-db-dev pg_isready -U ${DB_DEV_USER} -d agen46_dev >/dev/null 2>&1 && break
                     sleep 1
                     done
+                    docker exec agen46-db-dev pg_isready -U ${DB_DEV_USER} -d agen46_dev || exit 1
 
                     # 1. Bersihkan semua kontainer backend & LB lama
                     docker rm -f agen46-dev-node1 agen46-dev-node2 agen46-dev || true
@@ -251,23 +270,7 @@ pipeline {
                       ${IMAGE_NAME}:${BRANCH_NAME}-latest
 
                     # 4. Buat konfigurasi Nginx Load Balancer (Menggunakan echo beruntun agar aman dari bug parsing Groovy)
-                    echo 'upstream backend_cluster {' > nginx-lb.conf
-                    echo '    server agen46-dev-node1:8080 max_fails=1 fail_timeout=3s;' >> nginx-lb.conf
-                    echo '    server agen46-dev-node2:8080 max_fails=1 fail_timeout=3s;' >> nginx-lb.conf
-                    echo '}' >> nginx-lb.conf
-                    echo 'server {' >> nginx-lb.conf
-                    echo '    listen 80;' >> nginx-lb.conf
-                    echo '    location / {' >> nginx-lb.conf
-                    echo '        proxy_pass http://backend_cluster;' >> nginx-lb.conf
-                    echo '        proxy_connect_timeout 2s;' >> nginx-lb.conf
-                    echo '        proxy_send_timeout 2s;' >> nginx-lb.conf
-                    echo '        proxy_read_timeout 2s;' >> nginx-lb.conf
-                    echo '        proxy_next_upstream error timeout invalid_header http_502 http_503 http_504;' >> nginx-lb.conf
-                    echo '        proxy_next_upstream_tries 2;' >> nginx-lb.conf
-                    echo '        proxy_set_header Host $host;' >> nginx-lb.conf
-                    echo '        proxy_set_header X-Real-IP $remote_addr;' >> nginx-lb.conf
-                    echo '    }' >> nginx-lb.conf
-                    echo '}' >> nginx-lb.conf
+                    cp deploy/nginx-lb.conf nginx-lb.conf
 
                     # 5. Jalankan Nginx Load Balancer (menggunakan nama agen46-dev agar frontend tetap terkoneksi)
                     docker run -d --name agen46-dev --network agen46-net --restart unless-stopped -p 8081:80 \
@@ -279,7 +282,7 @@ pipeline {
                     # 6. Restart Frontend agar menautkan ulang koneksi ke Load Balancer
                     docker rm -f agen46-frontend-dev || true
                     docker run -d --name agen46-frontend-dev --network agen46-net --restart unless-stopped -p 8091:80 \
-                      -e BACKEND_HOST=agen46-dev agen46-frontend:${BRANCH_NAME}-latest
+                      -e BACKEND_PORT=80 -e BACKEND_HOST=agen46-dev agen46-frontend:${BRANCH_NAME}-latest
                     '''
                 }
                 script {
@@ -333,6 +336,7 @@ pipeline {
                     docker exec agen46-db-testing pg_isready -U ${DB_SIT_USER} -d agen46_testing >/dev/null 2>&1 && break
                     sleep 1
                     done
+                    docker exec agen46-db-testing pg_isready -U ${DB_SIT_USER} -d agen46_testing || exit 1
 
                     docker rm -f agen46-testing || true
                     docker run -d --name agen46-testing --network agen46-net --restart unless-stopped -p 8082:8080 \
@@ -344,7 +348,7 @@ pipeline {
 
                     docker rm -f agen46-frontend-testing || true
                     docker run -d --name agen46-frontend-testing --network agen46-net --restart unless-stopped -p 8092:80 \
-                    -e BACKEND_HOST=agen46-testing agen46-frontend:${BRANCH_NAME}-latest
+                    -e BACKEND_PORT=8080 -e BACKEND_HOST=agen46-testing agen46-frontend:${BRANCH_NAME}-latest
                     '''
                 }
                 script {
@@ -405,13 +409,15 @@ pipeline {
                             docker exec agen46-db-prod pg_isready -U ${DB_PROD_USER} -d agen46_prod >/dev/null 2>&1 && break
                             sleep 1
                             done
+                            docker exec agen46-db-prod pg_isready -U ${DB_PROD_USER} -d agen46_prod || exit 1
 
                             docker rm -f agen46-prod || true
+                            docker pull ${REGISTRY}/${IMAGE_NAME}:production-${ROLLBACK_VERSION}
                             docker run -d --name agen46-prod --network agen46-net --restart unless-stopped -p 8083:8080 \
                             -e APP_ENV=production -e BUILD_NUMBER=${ROLLBACK_VERSION} \
                             -e DB_HOST=agen46-db-prod -e DB_PORT=5432 -e DB_NAME=agen46_prod \
                             -e DB_USER=${DB_PROD_USER} -e DB_PASSWORD=${DB_PROD_PASS} \
-                            ${IMAGE_NAME}:production-${ROLLBACK_VERSION}
+                            ${REGISTRY}/${IMAGE_NAME}:production-${ROLLBACK_VERSION}
                             curl -s "http://localhost:9000/update?stage=production-rollback&build=${ROLLBACK_VERSION}" || true
                             '''
                         } else {
@@ -430,6 +436,7 @@ pipeline {
                             docker exec agen46-db-prod pg_isready -U ${DB_PROD_USER} -d agen46_prod >/dev/null 2>&1 && break
                             sleep 1
                             done
+                            docker exec agen46-db-prod pg_isready -U ${DB_PROD_USER} -d agen46_prod || exit 1
 
                             docker rm -f agen46-prod || true
                             docker run -d --name agen46-prod --network agen46-net --restart unless-stopped -p 8083:8080 \
@@ -440,7 +447,7 @@ pipeline {
 
                             docker rm -f agen46-frontend-prod || true
                             docker run -d --name agen46-frontend-prod --network agen46-net --restart unless-stopped -p 8093:80 \
-                            -e BACKEND_HOST=agen46-prod agen46-frontend:production-latest
+                            -e BACKEND_PORT=8080 -e BACKEND_HOST=agen46-prod agen46-frontend:production-latest
                             '''
 
                             echo 'Menunggu aplikasi siap, melakukan health check...'
@@ -477,20 +484,17 @@ pipeline {
                                     withEnv(["LAST_STABLE=${lastStable}"]) {
                                         sh '''
                                         docker rm -f agen46-prod || true
+                                        docker pull ${REGISTRY}/${IMAGE_NAME}:production-${LAST_STABLE}
                                         docker run -d --name agen46-prod --network agen46-net --restart unless-stopped -p 8083:8080 \
                                           -e APP_ENV=production -e BUILD_NUMBER=${LAST_STABLE} \
                                           -e DB_HOST=agen46-db-prod -e DB_PORT=5432 -e DB_NAME=agen46_prod \
                                           -e DB_USER=${DB_PROD_USER} -e DB_PASSWORD=${DB_PROD_PASS} \
-                                          ${IMAGE_NAME}:production-${LAST_STABLE}
+                                          ${REGISTRY}/${IMAGE_NAME}:production-${LAST_STABLE}
                                         curl -s "http://localhost:9000/update?stage=production-rollback-auto&build=${LAST_STABLE}" || true
                                         '''
                                     }
-                                    withCredentials([string(credentialsId: 'Token_Bot_Telegram', variable: 'TG_TOKEN'), string(credentialsId: 'Telegram-Chat-ID', variable: 'TG_CHAT')]) {
-                                        sh """
-                                        curl -s -X POST "https://api.telegram.org/bot\${TG_TOKEN}/sendMessage" \
-                                            -d chat_id=\${TG_CHAT} \
-                                            -d text="⚠️ AUTO-ROLLBACK terjadi di Production! Build #${BUILD_NUMBER} gagal health check, otomatis kembali ke build stabil #${lastStable}"
-                                        """
+                                    script {
+                                        tg("⚠️ AUTO-ROLLBACK terjadi di Production! Build #${BUILD_NUMBER} gagal health check, otomatis kembali ke build stabil #${lastStable}")
                                     }
                                     error("Auto-rollback dijalankan ke build ${lastStable} karena health check build ${BUILD_NUMBER} gagal.")
                                 }
@@ -503,27 +507,21 @@ pipeline {
     }
 
     post {
+        unstable {
+            script {
+                tg("⚠️ Pipeline UNSTABLE — branch: ${env.BRANCH_NAME}, build: #${env.BUILD_NUMBER}")
+            }
+            echo "Pipeline UNSTABLE untuk branch: ${env.BRANCH_NAME}"
+        }
         success {
             script {
-                withCredentials([string(credentialsId: 'Token_Bot_Telegram', variable: 'TG_TOKEN'), string(credentialsId: 'Telegram-Chat-ID', variable: 'TG_CHAT')]) {
-                    sh """
-                    curl -s -X POST "https://api.telegram.org/bot\${TG_TOKEN}/sendMessage" \
-                        -d chat_id=\${TG_CHAT} \
-                        -d text="✅ Pipeline SUKSES — branch: ${env.BRANCH_NAME}, build: #${env.BUILD_NUMBER}"
-                    """
-                }
+                tg("✅ Pipeline SUKSES — branch: ${env.BRANCH_NAME}, build: #${env.BUILD_NUMBER}")
             }
             echo "Pipeline sukses untuk branch: ${env.BRANCH_NAME}"
         }
         failure {
             script {
-                withCredentials([string(credentialsId: 'Token_Bot_Telegram', variable: 'TG_TOKEN'), string(credentialsId: 'Telegram-Chat-ID', variable: 'TG_CHAT')]) {
-                    sh """
-                    curl -s -X POST "https://api.telegram.org/bot\${TG_TOKEN}/sendMessage" \
-                        -d chat_id=\${TG_CHAT} \
-                        -d text="❌ Pipeline GAGAL — branch: ${env.BRANCH_NAME}, build: #${env.BUILD_NUMBER}"
-                    """
-                }
+                tg("❌ Pipeline GAGAL — branch: ${env.BRANCH_NAME}, build: #${env.BUILD_NUMBER}")
             }
             echo "Pipeline GAGAL untuk branch: ${env.BRANCH_NAME}"
         }

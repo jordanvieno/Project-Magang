@@ -1,0 +1,906 @@
+﻿diff --git a/Dockerfile b/Dockerfile
+index 818da0f..fd08c74 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -1,7 +1,6 @@
+-FROM eclipse-temurin:21-jre-alpine
+-
+-WORKDIR /app
+-
+-COPY target/digital-channel-app-1.0-SNAPSHOT.jar agen46-backend.jar
+-
++FROM eclipse-temurin:21-jre-alpine
++WORKDIR /app
++COPY target/digital-channel-app-1.0-SNAPSHOT.jar agen46-backend.jar
++RUN adduser -D -H -s /sbin/nologin appuser
++USER appuser
+ ENTRYPOINT ["java", "-jar", "agen46-backend.jar"]
+\ No newline at end of file
+diff --git a/Dockerfile.status b/Dockerfile.status
+deleted file mode 100644
+index 64d313d..0000000
+--- a/Dockerfile.status
++++ /dev/null
+@@ -1,4 +0,0 @@
+-FROM eclipse-temurin:21-jre-alpine
+-WORKDIR /app
+-COPY target/classes/com/channel/digital/StatusServer.class /app/com/channel/digital/StatusServer.class
+-ENTRYPOINT ["java", "-cp", "/app", "com.channel.digital.StatusServer"]
+\ No newline at end of file
+diff --git a/Jenkinsfile b/Jenkinsfile
+index d05f5df..001e8a3 100644
+--- a/Jenkinsfile
++++ b/Jenkinsfile
+@@ -1,8 +1,36 @@
++def tg(msg) {
++    withCredentials([string(credentialsId: 'Token_Bot_Telegram', variable: 'TG_TOKEN'), string(credentialsId: 'Telegram-Chat-ID', variable: 'TG_CHAT')]) {
++        sh """
++        curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \\
++            --data-urlencode "chat_id=${TG_CHAT}" \\
++            --data-urlencode "text=${msg}"
++        """
++    }
++}
++
++def ghStatus(state, desc, sha) {
++    withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
++        sh """
++        curl -s -X POST \\
++          -H "Authorization: token ${GH_TOKEN}" \\
++          -H "Accept: application/vnd.github+json" \\
++          https://api.github.com/repos/jordanvieno/Project-Magang/statuses/${sha} \\
++          -d '{"state":"${state}","context":"jenkins/quality-gate","description":"${desc}"}'
++        """
++    }
++}
++
+ pipeline {
+     agent any
+ 
++    options {
++        disableConcurrentBuilds()
++        timeout(time: 1, unit: 'HOURS')
++        buildDiscarder(logRotator(numToKeepStr: '5'))
++    }
++
+     triggers {
+-        pollSCM('* * * * *')
++        pollSCM('H/5 * * * *')
+     }
+ 
+     tools {
+@@ -28,19 +56,13 @@ pipeline {
+                     env.GIT_SHA = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+                 }
+                 withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
+-                    sh '''
+-                    curl -s -X POST \
+-                      -H "Authorization: token ${GH_TOKEN}" \
+-                      -H "Accept: application/vnd.github+json" \
+-                      https://api.github.com/repos/jordanvieno/Project-Magang/statuses/${GIT_SHA} \
+-                      -d '{"state":"pending","context":"jenkins/quality-gate","description":"Menjalankan unit test & coverage check..."}'
+-                    '''
++                    ghStatus('pending', 'Menjalankan unit test & coverage check...', env.GIT_SHA)
+                 }
+                 echo 'Menyiapkan PostgresSQL sementara untuk testing...'
+                 withCredentials([usernamePassword(credentialsId: 'agen46-db-test-credentials', usernameVariable: 'DB_TEST_USER', passwordVariable: 'DB_TEST_PASS')]) {
+                     sh '''
+                     docker rm -f agen46-db-test || true
+-                    docker run -d --name agen46-db-test -p 55432:5432 -e POSTGRES_USER=${DB_TEST_USER} -e POSTGRES_PASSWORD=${DB_TEST_PASS} -e POSTGRES_DB=agen46_test postgres:16-alpine
++                    docker run -d --name agen46-db-test -p 127.0.0.1:55432:5432 -e POSTGRES_USER=${DB_TEST_USER} -e POSTGRES_PASSWORD=${DB_TEST_PASS} -e POSTGRES_DB=agen46_test postgres:16-alpine
+ 
+                     echo "Menunggu PostgreSQL siap..."
+                     for i in $(seq 1 15); do
+@@ -50,6 +72,7 @@ pipeline {
+                         fi
+                         sleep 1
+                     done
++                    docker exec agen46-db-test pg_isready -U ${DB_TEST_USER} || exit 1
+                     '''
+                     echo 'Fase 0: Menjalankan Unit Test & Coverage Check (JUnit 5 + Jacoco)...'
+                     withEnv([
+@@ -70,25 +93,13 @@ pipeline {
+                 success {
+                     sh 'sudo /usr/local/bin/deploy-statusserver.sh'
+                     withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
+-                        sh '''
+-                        curl -s -X POST \
+-                          -H "Authorization: token ${GH_TOKEN}" \
+-                          -H "Accept: application/vnd.github+json" \
+-                          https://api.github.com/repos/jordanvieno/Project-Magang/statuses/${GIT_SHA} \
+-                          -d '{"state":"success","context":"jenkins/quality-gate","description":"Test lolos & coverage memenuhi threshold 70%"}'
+-                        '''
++                        ghStatus('success', 'Test lolos & coverage memenuhi threshold 70%', env.GIT_SHA)
+                     }
+                     echo 'Status Quality Gate: PASSED'
+                 }
+                 failure {
+                     withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
+-                        sh '''
+-                        curl -s -X POST \
+-                          -H "Authorization: token ${GH_TOKEN}" \
+-                          -H "Accept: application/vnd.github+json" \
+-                          https://api.github.com/repos/jordanvieno/Project-Magang/statuses/${GIT_SHA} \
+-                          -d '{"state":"failure","context":"jenkins/quality-gate","description":"Test gagal atau coverage di bawah threshold"}'
+-                        '''
++                        ghStatus('failure', 'Test gagal atau coverage di bawah threshold', env.GIT_SHA)
+                     }
+                     echo 'Status Quality Gate: FAILED ΓÇö pipeline dihentikan.'
+                 }
+@@ -107,7 +118,7 @@ pipeline {
+                         sh '''
+                         mkdir -p src/main/resources/static
+                         COMMIT_SHORT=$(git rev-parse --short HEAD)
+-                        curl -L -o src/main/resources/static/foto.jpg "https://picsum.photos/seed/${COMMIT_SHORT}/400/300"
++                        curl -fsSL --retry 3 -o src/main/resources/static/foto.jpg "https://picsum.photos/seed/${COMMIT_SHORT}/400/300"
+                         mvn package -DskipTests
+                         echo "=== VERIFIKASI: cek META-INF/services di jar hasil build ==="
+                         jar tf target/digital-channel-app-1.0-SNAPSHOT.jar | grep "META-INF/services" || echo "PERINGATAN: META-INF/services TIDAK DITEMUKAN di jar!"
+@@ -141,10 +152,7 @@ pipeline {
+                 withCredentials([usernamePassword(credentialsId: 'REGISTRY_CREDS', passwordVariable: 'REG_PASS', usernameVariable: 'REG_USER')]) {
+                     sh '''
+                     echo "${REG_PASS}" | docker login ${REGISTRY} -u ${REG_USER} --password-stdin
+-                    docker build --no-cache -t ${IMAGE_NAME}:${GIT_SHA} -t ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA} .
+-                    docker push ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA}
+-                    docker tag ${IMAGE_NAME}:${GIT_SHA} ${IMAGE_NAME}:${BRANCH_NAME}-${BUILD_NUMBER}
+-                    docker tag ${IMAGE_NAME}:${GIT_SHA} ${IMAGE_NAME}:${BRANCH_NAME}-latest
++                    docker build --no-cache -t ${IMAGE_NAME}:${GIT_SHA} .
+                     '''
+                 }
+             }
+@@ -182,6 +190,16 @@ pipeline {
+                   --format table \
+                   ${IMAGE_NAME}:${GIT_SHA}
+                 '''
++
++                echo 'Fase 1D-bis: Mendorong image ke registry (Setelah lolos scan)'
++                withCredentials([usernamePassword(credentialsId: 'REGISTRY_CREDS', passwordVariable: 'REG_PASS', usernameVariable: 'REG_USER')]) {
++                    sh '''
++                    docker tag ${IMAGE_NAME}:${GIT_SHA} ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA}
++                    docker push ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA}
++                    docker tag ${IMAGE_NAME}:${GIT_SHA} ${IMAGE_NAME}:${BRANCH_NAME}-${BUILD_NUMBER}
++                    docker tag ${IMAGE_NAME}:${GIT_SHA} ${IMAGE_NAME}:${BRANCH_NAME}-latest
++                    '''
++                }
+             }
+         }
+ 
+@@ -222,7 +240,7 @@ pipeline {
+                     docker network create agen46-net || true
+                     docker inspect agen46-db-dev >/dev/null 2>&1 || \
+                     docker run -d --name agen46-db-dev --network agen46-net --restart unless-stopped \
+-                    -p 5433:5432 \
++                    -p 127.0.0.1:5433:5432 \
+                     -e POSTGRES_USER=${DB_DEV_USER} -e POSTGRES_PASSWORD=${DB_DEV_PASS} \
+                     -e POSTGRES_DB=agen46_dev \
+                     -v agen46-db-dev-data:/var/lib/postgresql/data \
+@@ -232,6 +250,7 @@ pipeline {
+                     docker exec agen46-db-dev pg_isready -U ${DB_DEV_USER} -d agen46_dev >/dev/null 2>&1 && break
+                     sleep 1
+                     done
++                    docker exec agen46-db-dev pg_isready -U ${DB_DEV_USER} -d agen46_dev || exit 1
+ 
+                     # 1. Bersihkan semua kontainer backend & LB lama
+                     docker rm -f agen46-dev-node1 agen46-dev-node2 agen46-dev || true
+@@ -251,23 +270,7 @@ pipeline {
+                       ${IMAGE_NAME}:${BRANCH_NAME}-latest
+ 
+                     # 4. Buat konfigurasi Nginx Load Balancer (Menggunakan echo beruntun agar aman dari bug parsing Groovy)
+-                    echo 'upstream backend_cluster {' > nginx-lb.conf
+-                    echo '    server agen46-dev-node1:8080 max_fails=1 fail_timeout=3s;' >> nginx-lb.conf
+-                    echo '    server agen46-dev-node2:8080 max_fails=1 fail_timeout=3s;' >> nginx-lb.conf
+-                    echo '}' >> nginx-lb.conf
+-                    echo 'server {' >> nginx-lb.conf
+-                    echo '    listen 80;' >> nginx-lb.conf
+-                    echo '    location / {' >> nginx-lb.conf
+-                    echo '        proxy_pass http://backend_cluster;' >> nginx-lb.conf
+-                    echo '        proxy_connect_timeout 2s;' >> nginx-lb.conf
+-                    echo '        proxy_send_timeout 2s;' >> nginx-lb.conf
+-                    echo '        proxy_read_timeout 2s;' >> nginx-lb.conf
+-                    echo '        proxy_next_upstream error timeout invalid_header http_502 http_503 http_504;' >> nginx-lb.conf
+-                    echo '        proxy_next_upstream_tries 2;' >> nginx-lb.conf
+-                    echo '        proxy_set_header Host $host;' >> nginx-lb.conf
+-                    echo '        proxy_set_header X-Real-IP $remote_addr;' >> nginx-lb.conf
+-                    echo '    }' >> nginx-lb.conf
+-                    echo '}' >> nginx-lb.conf
++                    cp deploy/nginx-lb.conf nginx-lb.conf
+ 
+                     # 5. Jalankan Nginx Load Balancer (menggunakan nama agen46-dev agar frontend tetap terkoneksi)
+                     docker run -d --name agen46-dev --network agen46-net --restart unless-stopped -p 8081:80 \
+@@ -279,7 +282,7 @@ pipeline {
+                     # 6. Restart Frontend agar menautkan ulang koneksi ke Load Balancer
+                     docker rm -f agen46-frontend-dev || true
+                     docker run -d --name agen46-frontend-dev --network agen46-net --restart unless-stopped -p 8091:80 \
+-                      -e BACKEND_HOST=agen46-dev agen46-frontend:${BRANCH_NAME}-latest
++                      -e BACKEND_PORT=80 -e BACKEND_HOST=agen46-dev agen46-frontend:${BRANCH_NAME}-latest
+                     '''
+                 }
+                 script {
+@@ -333,6 +336,7 @@ pipeline {
+                     docker exec agen46-db-testing pg_isready -U ${DB_SIT_USER} -d agen46_testing >/dev/null 2>&1 && break
+                     sleep 1
+                     done
++                    docker exec agen46-db-testing pg_isready -U ${DB_SIT_USER} -d agen46_testing || exit 1
+ 
+                     docker rm -f agen46-testing || true
+                     docker run -d --name agen46-testing --network agen46-net --restart unless-stopped -p 8082:8080 \
+@@ -344,7 +348,7 @@ pipeline {
+ 
+                     docker rm -f agen46-frontend-testing || true
+                     docker run -d --name agen46-frontend-testing --network agen46-net --restart unless-stopped -p 8092:80 \
+-                    -e BACKEND_HOST=agen46-testing agen46-frontend:${BRANCH_NAME}-latest
++                    -e BACKEND_PORT=8080 -e BACKEND_HOST=agen46-testing agen46-frontend:${BRANCH_NAME}-latest
+                     '''
+                 }
+                 script {
+@@ -405,13 +409,15 @@ pipeline {
+                             docker exec agen46-db-prod pg_isready -U ${DB_PROD_USER} -d agen46_prod >/dev/null 2>&1 && break
+                             sleep 1
+                             done
++                            docker exec agen46-db-prod pg_isready -U ${DB_PROD_USER} -d agen46_prod || exit 1
+ 
+                             docker rm -f agen46-prod || true
++                            docker pull ${REGISTRY}/${IMAGE_NAME}:production-${ROLLBACK_VERSION}
+                             docker run -d --name agen46-prod --network agen46-net --restart unless-stopped -p 8083:8080 \
+                             -e APP_ENV=production -e BUILD_NUMBER=${ROLLBACK_VERSION} \
+                             -e DB_HOST=agen46-db-prod -e DB_PORT=5432 -e DB_NAME=agen46_prod \
+                             -e DB_USER=${DB_PROD_USER} -e DB_PASSWORD=${DB_PROD_PASS} \
+-                            ${IMAGE_NAME}:production-${ROLLBACK_VERSION}
++                            ${REGISTRY}/${IMAGE_NAME}:production-${ROLLBACK_VERSION}
+                             curl -s "http://localhost:9000/update?stage=production-rollback&build=${ROLLBACK_VERSION}" || true
+                             '''
+                         } else {
+@@ -430,6 +436,7 @@ pipeline {
+                             docker exec agen46-db-prod pg_isready -U ${DB_PROD_USER} -d agen46_prod >/dev/null 2>&1 && break
+                             sleep 1
+                             done
++                            docker exec agen46-db-prod pg_isready -U ${DB_PROD_USER} -d agen46_prod || exit 1
+ 
+                             docker rm -f agen46-prod || true
+                             docker run -d --name agen46-prod --network agen46-net --restart unless-stopped -p 8083:8080 \
+@@ -440,7 +447,7 @@ pipeline {
+ 
+                             docker rm -f agen46-frontend-prod || true
+                             docker run -d --name agen46-frontend-prod --network agen46-net --restart unless-stopped -p 8093:80 \
+-                            -e BACKEND_HOST=agen46-prod agen46-frontend:production-latest
++                            -e BACKEND_PORT=8080 -e BACKEND_HOST=agen46-prod agen46-frontend:production-latest
+                             '''
+ 
+                             echo 'Menunggu aplikasi siap, melakukan health check...'
+@@ -477,20 +484,17 @@ pipeline {
+                                     withEnv(["LAST_STABLE=${lastStable}"]) {
+                                         sh '''
+                                         docker rm -f agen46-prod || true
++                                        docker pull ${REGISTRY}/${IMAGE_NAME}:production-${LAST_STABLE}
+                                         docker run -d --name agen46-prod --network agen46-net --restart unless-stopped -p 8083:8080 \
+                                           -e APP_ENV=production -e BUILD_NUMBER=${LAST_STABLE} \
+                                           -e DB_HOST=agen46-db-prod -e DB_PORT=5432 -e DB_NAME=agen46_prod \
+                                           -e DB_USER=${DB_PROD_USER} -e DB_PASSWORD=${DB_PROD_PASS} \
+-                                          ${IMAGE_NAME}:production-${LAST_STABLE}
++                                          ${REGISTRY}/${IMAGE_NAME}:production-${LAST_STABLE}
+                                         curl -s "http://localhost:9000/update?stage=production-rollback-auto&build=${LAST_STABLE}" || true
+                                         '''
+                                     }
+-                                    withCredentials([string(credentialsId: 'Token_Bot_Telegram', variable: 'TG_TOKEN'), string(credentialsId: 'Telegram-Chat-ID', variable: 'TG_CHAT')]) {
+-                                        sh """
+-                                        curl -s -X POST "https://api.telegram.org/bot\${TG_TOKEN}/sendMessage" \
+-                                            -d chat_id=\${TG_CHAT} \
+-                                            -d text="ΓÜá∩╕Å AUTO-ROLLBACK terjadi di Production! Build #${BUILD_NUMBER} gagal health check, otomatis kembali ke build stabil #${lastStable}"
+-                                        """
++                                    script {
++                                        tg("ΓÜá∩╕Å AUTO-ROLLBACK terjadi di Production! Build #${BUILD_NUMBER} gagal health check, otomatis kembali ke build stabil #${lastStable}")
+                                     }
+                                     error("Auto-rollback dijalankan ke build ${lastStable} karena health check build ${BUILD_NUMBER} gagal.")
+                                 }
+@@ -503,27 +507,21 @@ pipeline {
+     }
+ 
+     post {
++        unstable {
++            script {
++                tg("ΓÜá∩╕Å Pipeline UNSTABLE ΓÇö branch: ${env.BRANCH_NAME}, build: #${env.BUILD_NUMBER}")
++            }
++            echo "Pipeline UNSTABLE untuk branch: ${env.BRANCH_NAME}"
++        }
+         success {
+             script {
+-                withCredentials([string(credentialsId: 'Token_Bot_Telegram', variable: 'TG_TOKEN'), string(credentialsId: 'Telegram-Chat-ID', variable: 'TG_CHAT')]) {
+-                    sh """
+-                    curl -s -X POST "https://api.telegram.org/bot\${TG_TOKEN}/sendMessage" \
+-                        -d chat_id=\${TG_CHAT} \
+-                        -d text="Γ£à Pipeline SUKSES ΓÇö branch: ${env.BRANCH_NAME}, build: #${env.BUILD_NUMBER}"
+-                    """
+-                }
++                tg("Γ£à Pipeline SUKSES ΓÇö branch: ${env.BRANCH_NAME}, build: #${env.BUILD_NUMBER}")
+             }
+             echo "Pipeline sukses untuk branch: ${env.BRANCH_NAME}"
+         }
+         failure {
+             script {
+-                withCredentials([string(credentialsId: 'Token_Bot_Telegram', variable: 'TG_TOKEN'), string(credentialsId: 'Telegram-Chat-ID', variable: 'TG_CHAT')]) {
+-                    sh """
+-                    curl -s -X POST "https://api.telegram.org/bot\${TG_TOKEN}/sendMessage" \
+-                        -d chat_id=\${TG_CHAT} \
+-                        -d text="Γ¥î Pipeline GAGAL ΓÇö branch: ${env.BRANCH_NAME}, build: #${env.BUILD_NUMBER}"
+-                    """
+-                }
++                tg("Γ¥î Pipeline GAGAL ΓÇö branch: ${env.BRANCH_NAME}, build: #${env.BUILD_NUMBER}")
+             }
+             echo "Pipeline GAGAL untuk branch: ${env.BRANCH_NAME}"
+         }
+diff --git a/frontend/Dockerfile b/frontend/Dockerfile
+index a145f70..de1fafa 100644
+--- a/frontend/Dockerfile
++++ b/frontend/Dockerfile
+@@ -1,8 +1,7 @@
+ FROM nginx:alpine
+-
++# ponytail: nginx needs root to bind port 80; switch to nginxinc/nginx-unprivileged if non-root needed
+ COPY index.html /usr/share/nginx/html/index.html
+ COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+-
+ ENV BACKEND_HOST=agen46-dev
+-
++ENV BACKEND_PORT=8080
+ EXPOSE 80
+diff --git a/frontend/index.html b/frontend/index.html
+index e033a66..7b23808 100644
+--- a/frontend/index.html
++++ b/frontend/index.html
+@@ -27,8 +27,7 @@
+     try {
+       const res = await fetch('/api/v1/payments/health');
+       const data = await res.json();
+-      const cls = data.database === 'UP' ? 'up' : 'down';
+-      resultBox.innerHTML = `Status: <span class="${cls}">${data.status}</span>\nEnvironment: ${data.environment}\nDatabase: <span class="${cls}">${data.database}</span>`;
++      resultBox.textContent = `Status: ${data.status}\nEnvironment: ${data.environment}\nDatabase: ${data.database}`;
+       document.getElementById('env-label').textContent = data.environment;
+     } catch (e) {
+       resultBox.textContent = 'Gagal menghubungi backend: ' + e.message;
+diff --git a/frontend/nginx.conf.template b/frontend/nginx.conf.template
+index 00be49c..f015481 100644
+--- a/frontend/nginx.conf.template
++++ b/frontend/nginx.conf.template
+@@ -1,5 +1,7 @@
+ server {
+     listen 80;
++    resolver 127.0.0.11 valid=5s;
++    set $backend http://${BACKEND_HOST}:${BACKEND_PORT};
+ 
+     location / {
+         root /usr/share/nginx/html;
+@@ -8,7 +10,7 @@ server {
+     }
+ 
+     location /api/ {
+-        proxy_pass http://${BACKEND_HOST}:8080/api/;
++        proxy_pass $backend;
+         proxy_set_header Host $host;
+         proxy_set_header X-Real-IP $remote_addr;
+     }
+diff --git a/k8s/backend-deployment.yaml b/k8s/backend-deployment.yaml
+deleted file mode 100644
+index 22d45af..0000000
+--- a/k8s/backend-deployment.yaml
++++ /dev/null
+@@ -1,46 +0,0 @@
+-apiVersion: apps/v1
+-kind: Deployment
+-metadata:
+-  name: agen46-backend-deployment
+-  labels:
+-    app: agen46-backend
+-spec:
+-  replicas: 2
+-  strategy:
+-    type: RollingUpdate
+-    rollingUpdate:
+-      maxSurge: 1
+-      maxUnavailable: 0
+-  selector:
+-    matchLabels:
+-      app: agen46-backend
+-  template:
+-    metadata:
+-      labels:
+-        app: agen46-backend
+-    spec:
+-      containers:
+-        - name: agen46-backend
+-          image: agen46-backend:latest
+-          ports:
+-            - containerPort: 8080
+-          imagePullPolicy: Never
+-          readinessProbe:
+-          httpGet:
+-            path: /api/v1/payments/health
+-            port: 8080
+-          initialDelaySeconds: 20
+-          periodSeconds: 5
+----
+-apiVersion: v1
+-kind: Service
+-metadata:
+-  name: agen46-backend-service
+-spec:
+-  type: NodePort
+-  selector:
+-    app: agen46-backend
+-  ports:
+-    - port: 8080
+-      targetPort: 8080
+-      nodePort: 30080
+diff --git a/monitoring/docker-compose.yml b/monitoring/docker-compose.yml
+index fc6dc2a..a1a9669 100644
+--- a/monitoring/docker-compose.yml
++++ b/monitoring/docker-compose.yml
+@@ -1,4 +1,3 @@
+-version: "3.8"
+ 
+ services:
+   prometheus:
+@@ -23,7 +22,7 @@ services:
+     ports:
+       - "3000:3000"
+     environment:
+-      - GF_SECURITY_ADMIN_PASSWORD=agen46admin
++      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD}
+     volumes:
+       - agen46-grafana-data:/var/lib/grafana
+     networks:
+@@ -51,6 +50,7 @@ services:
+     volumes:
+       - ./promtail-config.yml:/etc/promtail/config.yml
+       - /var/run/docker.sock:/var/run/docker.sock
++      - agen46-promtail-data:/tmp
+     command: -config.file=/etc/promtail/config.yml
+     networks:
+       - agen46-net
+@@ -66,3 +66,4 @@ volumes:
+   agen46-prometheus-data:
+   agen46-grafana-data:
+   agen46-loki-data:
++  agen46-promtail-data:
+diff --git a/monitoring/load-test.js b/monitoring/load-test.js
+index 3996271..a7e0da3 100644
+--- a/monitoring/load-test.js
++++ b/monitoring/load-test.js
+@@ -15,7 +15,7 @@ export const options = {
+   },
+ };
+ 
+-const BASE_URL = 'http://agen46-dev:8080';
++const BASE_URL = 'http://agen46-dev';
+ 
+ export default function () {
+   const rootRes = http.get(`${BASE_URL}/`);
+diff --git a/monitoring/loki-config.yml b/monitoring/loki-config.yml
+index 01f0e7b..8b843b6 100644
+--- a/monitoring/loki-config.yml
++++ b/monitoring/loki-config.yml
+@@ -28,5 +28,3 @@ schema_config:
+ limits_config:
+   volume_enabled: true
+ 
+-ruler:
+-  alertmanager_url: http://localhost:9093
+diff --git a/monitoring/prometheus.yml b/monitoring/prometheus.yml
+index 65a80b5..b80c0c9 100644
+--- a/monitoring/prometheus.yml
++++ b/monitoring/prometheus.yml
+@@ -1,5 +1,5 @@
+ global:
+-  scrape_interval: 5s
++  scrape_interval: 15s
+ 
+ scrape_configs:
+   - job_name: "agen46-backend"
+diff --git a/monitoring/setup-agen46.yml b/monitoring/setup-agen46.yml
+index 1f93ce4..f98f538 100644
+--- a/monitoring/setup-agen46.yml
++++ b/monitoring/setup-agen46.yml
+@@ -4,7 +4,7 @@
+   become: true
+   vars:
+     deploy_user: jordanvieno
+-    monitoring_dir: "/mnt/c/Users/Jordan/OneDrive/Documents/Kuliah Ilmu Komputer di IPB/Magang/Project Magang Linux/Project_Magang_Linux/monitoring"
++    monitoring_dir: "{{ playbook_dir }}"
+ 
+   tasks:
+     - name: Pastikan Docker network agen46-net ada
+@@ -29,6 +29,7 @@
+           set -euo pipefail
+ 
+           JAR=$(find /var/lib/jenkins/workspace \
++                -path "*developmentlinux*" \
+                 -path "*/target/digital-channel-app-1.0-SNAPSHOT.jar" \
+                 -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -n1 | cut -d' ' -f2-)
+ 
+diff --git a/pom.xml b/pom.xml
+index bc18aeb..b1b75c5 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -13,8 +13,7 @@
+ 
+   <properties>
+     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+-    <maven.compiler.source>11</maven.compiler.source>
+-    <maven.compiler.target>11</maven.compiler.target>
++    <maven.compiler.release>21</maven.compiler.release>
+     <junit.jupiter.version>5.10.2</junit.jupiter.version>
+   </properties>
+ 
+@@ -30,65 +29,12 @@
+     <artifactId>postgresql</artifactId>
+     <version>42.7.4</version>
+     </dependency>
+-    <dependency>
+-    <groupId>org.flywaydb</groupId>
+-    <artifactId>flyway-core</artifactId>
+-    <version>9.22.3</version>
+-    </dependency> 
+   </dependencies>
+ 
+   <build>
+-    <pluginManagement>
+-      <plugins>
+-        <plugin>
+-          <artifactId>maven-clean-plugin</artifactId>
+-          <version>3.1.0</version>
+-        </plugin>
+-        <plugin>
+-          <artifactId>maven-resources-plugin</artifactId>
+-          <version>3.0.2</version>
+-        </plugin>
+-        <plugin>
+-          <artifactId>maven-compiler-plugin</artifactId>
+-          <version>3.8.0</version>
+-        </plugin>
+-        <plugin>
+-          <artifactId>maven-surefire-plugin</artifactId>
+-          <version>3.2.5</version>
+-        </plugin>
+-        <plugin>
+-          <artifactId>maven-jar-plugin</artifactId>
+-          <version>3.0.2</version>
+-        </plugin>
+-        <plugin>
+-          <artifactId>maven-install-plugin</artifactId>
+-          <version>2.5.2</version>
+-        </plugin>
+-        <plugin>
+-          <artifactId>maven-deploy-plugin</artifactId>
+-          <version>2.8.2</version>
+-        </plugin>
+-        <plugin>
+-          <artifactId>maven-site-plugin</artifactId>
+-          <version>3.7.1</version>
+-        </plugin>
+-        <plugin>
+-          <artifactId>maven-project-info-reports-plugin</artifactId>
+-          <version>3.0.0</version>
+-        </plugin>
+-      </plugins>
+-    </pluginManagement>
++
+     <plugins>
+-      <plugin>
+-        <artifactId>maven-jar-plugin</artifactId>
+-        <configuration>
+-          <archive>
+-            <manifest>
+-              <mainClass>com.channel.digital.App</mainClass>
+-            </manifest>
+-          </archive>
+-        </configuration>
+-      </plugin>
++
+ 
+       <plugin>
+         <artifactId>maven-surefire-plugin</artifactId>
+diff --git a/src/main/java/com/channel/digital/App.java b/src/main/java/com/channel/digital/App.java
+index abacaef..630c81c 100644
+--- a/src/main/java/com/channel/digital/App.java
++++ b/src/main/java/com/channel/digital/App.java
+@@ -33,7 +33,7 @@ public class App {
+ 
+     public static HttpServer startServer(int port) throws IOException {
+         HttpServer server = createServer(port);
+-        server.setExecutor(null);
++        server.setExecutor(java.util.concurrent.Executors.newFixedThreadPool(8));
+         server.start();
+ 
+         String env = System.getenv().getOrDefault("APP_ENV", "unknown");
+@@ -50,8 +50,11 @@ public class App {
+ 
+     static Connection getDbConnection() throws SQLException {
+         String url = getDbUrl();
+-        String user = System.getenv().getOrDefault("DB_USER", "agen46");
+-        String password = System.getenv().getOrDefault("DB_PASSWORD", "agen46pass");
++        String user = System.getenv("DB_USER");
++        String password = System.getenv("DB_PASSWORD");
++        if (user == null || password == null) {
++            throw new SQLException("DB credentials not configured");
++        }
+         return DriverManager.getConnection(url, user, password);
+     }
+ 
+@@ -64,6 +67,15 @@ public class App {
+         }
+     }
+ 
++    static void sendResponse(com.sun.net.httpserver.HttpExchange exchange, int statusCode, String response, String contentType) throws IOException {
++        exchange.getResponseHeaders().set("Content-Type", contentType);
++        byte[] bytes = response.getBytes(java.nio.charset.StandardCharsets.UTF_8);
++        exchange.sendResponseHeaders(statusCode, bytes.length);
++        try (OutputStream os = exchange.getResponseBody()) {
++            os.write(bytes);
++        }
++    }
++
+     public static HttpServer createServer(int port) throws IOException {
+         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
+ 
+@@ -88,11 +100,7 @@ public class App {
+                     + "<p>Build: " + System.getenv().getOrDefault("BUILD_NUMBER", "N/A") + "</p>"
+                     + "<img src='/photo' style='max-width:400px; border:4px solid white; border-radius:8px; margin-top:20px;' />"
+                     + "</body></html>";
+-            exchange.getResponseHeaders().set("Content-Type", "text/html");
+-            exchange.sendResponseHeaders(200, html.getBytes().length);
+-            try (OutputStream os = exchange.getResponseBody()) {
+-                os.write(html.getBytes());
+-            }
++            sendResponse(exchange, 200, html, "text/html");
+             lastResponseTimeMs.put("root", System.currentTimeMillis() - start);
+         });
+ 
+@@ -118,24 +126,17 @@ public class App {
+ 
+             sb.append("# HELP agen46_database_up Status koneksi database (1=up, 0=down)\n");
+             sb.append("# TYPE agen46_database_up gauge\n");
+-            sb.append("agen46_database_up ").append(isDatabaseHealthy() ? 1 : 0).append("\n");
++            sb.append("agen46_database_up ").append(dbCheck.getAsBoolean() ? 1 : 0).append("\n");
+ 
+             String response = sb.toString();
+-            exchange.getResponseHeaders().set("Content-Type", "text/plain; version=0.0.4");
+-            exchange.sendResponseHeaders(200, response.getBytes().length);
+-            try (OutputStream os = exchange.getResponseBody()) {
+-                os.write(response.getBytes());
+-            }
++            sendResponse(exchange, 200, response, "text/plain; version=0.0.4");
+         });
+ 
+         server.createContext("/photo", exchange -> {
+             try (InputStream is = App.class.getResourceAsStream("/static/foto.jpg")) {
+                 if (is == null) {
+                     String notFound = "Gambar tidak ditemukan";
+-                    exchange.sendResponseHeaders(404, notFound.getBytes().length);
+-                    try (OutputStream os = exchange.getResponseBody()) {
+-                        os.write(notFound.getBytes());
+-                    }
++                    sendResponse(exchange, 404, notFound, "text/plain");
+                     return;
+                 }
+                 byte[] imageBytes = is.readAllBytes();
+@@ -154,11 +155,7 @@ public class App {
+             int statusCode = dbUp ? 200 : 503;
+             String response = "{\"status\":\"" + (dbUp ? "UP" : "DEGRADED") + "\",\"environment\":\"" + finalEnv
+                     + "\",\"database\":\"" + (dbUp ? "UP" : "DOWN") + "\"}";
+-            exchange.getResponseHeaders().set("Content-Type", "application/json");
+-            exchange.sendResponseHeaders(statusCode, response.getBytes().length);
+-            try (OutputStream os = exchange.getResponseBody()) {
+-                os.write(response.getBytes());
+-            }
++            sendResponse(exchange, statusCode, response, "application/json");
+             lastResponseTimeMs.put("health", System.currentTimeMillis() - start);
+         });
+ 
+@@ -201,11 +198,7 @@ public class App {
+                 statusCode = 500;
+                 response = "{\"result\":\"error\",\"message\":\"" + e.getMessage().replace("\"", "'") + "\"}";
+             }
+-            exchange.getResponseHeaders().set("Content-Type", "application/json");
+-            exchange.sendResponseHeaders(statusCode, response.getBytes().length);
+-            try (OutputStream os = exchange.getResponseBody()) {
+-                os.write(response.getBytes());
+-            }
++            sendResponse(exchange, statusCode, response, "application/json");
+             lastResponseTimeMs.put("test", System.currentTimeMillis() - start);
+         });
+ 
+diff --git a/src/main/java/com/channel/digital/StatusServer.java b/src/main/java/com/channel/digital/StatusServer.java
+index afbd1ff..930e737 100644
+--- a/src/main/java/com/channel/digital/StatusServer.java
++++ b/src/main/java/com/channel/digital/StatusServer.java
+@@ -26,25 +26,23 @@ public class StatusServer {
+             String stage = "idle", build = "-";
+             if (query != null) {
+                 for (String param : query.split("&")) {
+-                    String[] kv = param.split("=");
+-                    if (kv[0].equals("stage"))
++                    String[] kv = param.split("=", 2);
++                    if (kv.length < 2) continue;
++                    if (kv[0].equals("stage") && kv[1].matches("^[a-zA-Z0-9-]+$"))
+                         stage = kv[1];
+-                    if (kv[0].equals("build"))
++                    if (kv[0].equals("build") && kv[1].matches("^\\d+$"))
+                         build = kv[1];
+                 }
+             }
+             currentStage.set(stage);
+             currentBuild.set(build);
+             String response = "OK";
+-            exchange.sendResponseHeaders(200, response.getBytes().length);
+-            try (OutputStream os = exchange.getResponseBody()) {
+-                os.write(response.getBytes());
+-            }
++            App.sendResponse(exchange, 200, response, "text/plain");
+         });
+ 
+         server.createContext("/", exchange -> {
+             String stage = currentStage.get();
+-            String color = resolveColor(stage);
++            String color = App.resolveColor(stage);
+             String html = "<html><head><meta http-equiv='refresh' content='2'>"
+                     + "<title>Pipeline Status</title></head>"
+                     + "<body style='background-color:" + color
+@@ -53,30 +51,11 @@ public class StatusServer {
+                     + "<h2>Tahap Terakhir: " + stage.toUpperCase() + "</h2>"
+                     + "<p>Build: " + currentBuild.get() + "</p>"
+                     + "</body></html>";
+-            exchange.getResponseHeaders().set("Content-Type", "text/html");
+-            exchange.sendResponseHeaders(200, html.getBytes().length);
+-            try (OutputStream os = exchange.getResponseBody()) {
+-                os.write(html.getBytes());
+-            }
++            App.sendResponse(exchange, 200, html, "text/html");
+         });
+ 
+         return server;
+     }
+ 
+-    static String resolveColor(String stage) {
+-        switch (stage) {
+-            case "development":
+-                return "#e74c3c";
+-            case "testing":
+-                return "#f1c40f";
+-            case "production":
+-                return "#2ecc71";
+-            case "production-rollback":
+-                return "#e67e22";
+-            case "production-rollback-auto":
+-                return "#3498db";
+-            default:
+-                return "#95a5a6";
+-        }
+-    }
++
+ }
+\ No newline at end of file
+diff --git a/src/main/resources/db/migration/V1__init_schema.sql b/src/main/resources/db/migration/V1__init_schema.sql
+deleted file mode 100644
+index 024b991..0000000
+--- a/src/main/resources/db/migration/V1__init_schema.sql
++++ /dev/null
+@@ -1,7 +0,0 @@
+-CREATE TABLE IF NOT EXISTS transaksi_agen46 (
+-    id SERIAL PRIMARY KEY,
+-    nomor_referensi VARCHAR(50) NOT NULL UNIQUE,
+-    nominal DECIMAL(15, 2) NOT NULL,
+-    status VARCHAR(20) NOT NULL,
+-    waktu_transaksi TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-);
+diff --git a/src/test/java/com/channel/digital/AppTest.java b/src/test/java/com/channel/digital/AppTest.java
+index 21528fd..761dd30 100644
+--- a/src/test/java/com/channel/digital/AppTest.java
++++ b/src/test/java/com/channel/digital/AppTest.java
+@@ -16,13 +16,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
+ class AppTest {
+ 
+     private static HttpServer server;
+-    private static final int PORT = 8099;
++    private static int PORT = 0;
+     private static final HttpClient client = HttpClient.newHttpClient();
+ 
+     @BeforeAll
+     static void startServer() throws Exception {
+-        server = App.createServer(PORT);
++        server = App.createServer(0);
+         server.start();
++        PORT = server.getAddress().getPort();
+     }
+ 
+     @AfterAll
+@@ -55,21 +56,17 @@ class AppTest {
+         assertTrue(response.body().contains("Agen46 Backend"));
+     }
+ 
+-    @Test
+-    void photoEndpoint_shouldReturn404WhenImageMissing() throws Exception {
+-        // Di lingkungan test, /static/foto.jpg biasanya tidak ada di classpath
+-        // karena itu di-generate di Jenkins pipeline pakai curl picsum.photos
+-        HttpResponse<String> response = get("/photo");
+-        assertTrue(response.statusCode() == 200 || response.statusCode() == 404);
+-    }
++
+ 
+     @Test
++    @org.junit.jupiter.api.Tag("integration")
+     void databaseHealthCheck_shouldReportUp_whenDbAvailable() throws Exception {
+         HttpResponse<String> response = get("/api/v1/payments/health");
+         assertTrue(response.body().contains("\"database\":\"UP\""));
+     }
+ 
+     @Test
++    @org.junit.jupiter.api.Tag("integration")
+     void paymentsTestEndpoint_shouldInsertAndReturnRows() throws Exception {
+         HttpResponse<String> response = get("/api/v1/payments/test");
+         assertEquals(200, response.statusCode());
+@@ -92,13 +89,21 @@ class AppTest {
+         assertEquals("#95a5a6", App.resolveColor("unknown"));
+     }
+ 
++    @Test
++    void metricsEndpoint_shouldReturn200AndUptime() throws Exception {
++        HttpResponse<String> response = get("/metrics");
++        assertEquals(200, response.statusCode());
++        assertTrue(response.body().contains("agen46_uptime_seconds"));
++    }
++
+     @Test
+     void startServer_shouldStartAndPrintStartupMessage() throws Exception {
+-        HttpServer mainServer = App.startServer(8098);
++        HttpServer mainServer = App.startServer(0);
++        int mainPort = mainServer.getAddress().getPort();
+         try {
+             HttpResponse<String> response = HttpClient.newHttpClient().send(
+                     HttpRequest.newBuilder()
+-                            .uri(URI.create("http://localhost:8098/api/v1/payments/health"))
++                            .uri(URI.create("http://localhost:" + mainPort + "/api/v1/payments/health"))
+                             .GET()
+                             .build(),
+                     HttpResponse.BodyHandlers.ofString());
+diff --git a/src/test/java/com/channel/digital/StatusServerTest.java b/src/test/java/com/channel/digital/StatusServerTest.java
+index 11ba88a..0cd7a8f 100644
+--- a/src/test/java/com/channel/digital/StatusServerTest.java
++++ b/src/test/java/com/channel/digital/StatusServerTest.java
+@@ -15,14 +15,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
+ 
+ class StatusServerTest {
+ 
+-    private static final int PORT = 8097;
++    private static int PORT = 0;
+     private static final HttpClient client = HttpClient.newHttpClient();
+     private HttpServer server;
+ 
+     @BeforeEach
+     void startServer() throws Exception {
+-        server = StatusServer.createServer(PORT);
++        server = StatusServer.createServer(0);
+         server.start();
++        PORT = server.getAddress().getPort();
+     }
+ 
+     @AfterEach
+@@ -64,13 +65,13 @@ class StatusServerTest {
+ 
+     @Test
+     void resolveColor_shouldMapAllKnownStages() {
+-        assertEquals("#e74c3c", StatusServer.resolveColor("development"));
+-        assertEquals("#f1c40f", StatusServer.resolveColor("testing"));
+-        assertEquals("#2ecc71", StatusServer.resolveColor("production"));
+-        assertEquals("#e67e22", StatusServer.resolveColor("production-rollback"));
+-        assertEquals("#3498db", StatusServer.resolveColor("production-rollback-auto"));
+-        assertEquals("#95a5a6", StatusServer.resolveColor("idle"));
+-        assertEquals("#95a5a6", StatusServer.resolveColor("nggak-dikenal"));
++        assertEquals("#e74c3c", App.resolveColor("development"));
++        assertEquals("#f1c40f", App.resolveColor("testing"));
++        assertEquals("#2ecc71", App.resolveColor("production"));
++        assertEquals("#e67e22", App.resolveColor("production-rollback"));
++        assertEquals("#3498db", App.resolveColor("production-rollback-auto"));
++        assertEquals("#95a5a6", App.resolveColor("idle"));
++        assertEquals("#95a5a6", App.resolveColor("nggak-dikenal"));
+     }
+ 
+     private HttpResponse<String> get(String path) throws Exception {

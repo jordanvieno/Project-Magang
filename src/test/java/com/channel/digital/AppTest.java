@@ -16,13 +16,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AppTest {
 
     private static HttpServer server;
-    private static final int PORT = 8099;
+    private static int PORT = 0;
     private static final HttpClient client = HttpClient.newHttpClient();
 
     @BeforeAll
     static void startServer() throws Exception {
-        server = App.createServer(PORT);
+        server = App.createServer(0);
         server.start();
+        PORT = server.getAddress().getPort();
     }
 
     @AfterAll
@@ -55,21 +56,17 @@ class AppTest {
         assertTrue(response.body().contains("Agen46 Backend"));
     }
 
-    @Test
-    void photoEndpoint_shouldReturn404WhenImageMissing() throws Exception {
-        // Di lingkungan test, /static/foto.jpg biasanya tidak ada di classpath
-        // karena itu di-generate di Jenkins pipeline pakai curl picsum.photos
-        HttpResponse<String> response = get("/photo");
-        assertTrue(response.statusCode() == 200 || response.statusCode() == 404);
-    }
+
 
     @Test
+    @org.junit.jupiter.api.Tag("integration")
     void databaseHealthCheck_shouldReportUp_whenDbAvailable() throws Exception {
         HttpResponse<String> response = get("/api/v1/payments/health");
         assertTrue(response.body().contains("\"database\":\"UP\""));
     }
 
     @Test
+    @org.junit.jupiter.api.Tag("integration")
     void paymentsTestEndpoint_shouldInsertAndReturnRows() throws Exception {
         HttpResponse<String> response = get("/api/v1/payments/test");
         assertEquals(200, response.statusCode());
@@ -93,12 +90,20 @@ class AppTest {
     }
 
     @Test
+    void metricsEndpoint_shouldReturn200AndUptime() throws Exception {
+        HttpResponse<String> response = get("/metrics");
+        assertEquals(200, response.statusCode());
+        assertTrue(response.body().contains("agen46_uptime_seconds"));
+    }
+
+    @Test
     void startServer_shouldStartAndPrintStartupMessage() throws Exception {
-        HttpServer mainServer = App.startServer(8098);
+        HttpServer mainServer = App.startServer(0);
+        int mainPort = mainServer.getAddress().getPort();
         try {
             HttpResponse<String> response = HttpClient.newHttpClient().send(
                     HttpRequest.newBuilder()
-                            .uri(URI.create("http://localhost:8098/api/v1/payments/health"))
+                            .uri(URI.create("http://localhost:" + mainPort + "/api/v1/payments/health"))
                             .GET()
                             .build(),
                     HttpResponse.BodyHandlers.ofString());

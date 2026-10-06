@@ -15,7 +15,7 @@ export const options = {
   },
 };
 
-const BASE_URL = 'http://agen46-dev:8080';
+const BASE_URL = 'http://agen46-dev';
 
 export default function () {
   const rootRes = http.get(`${BASE_URL}/`);

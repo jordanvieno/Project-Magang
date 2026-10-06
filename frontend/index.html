@@ -27,8 +27,7 @@
     try {
       const res = await fetch('/api/v1/payments/health');
       const data = await res.json();
-      const cls = data.database === 'UP' ? 'up' : 'down';
-      resultBox.innerHTML = `Status: <span class="${cls}">${data.status}</span>\nEnvironment: ${data.environment}\nDatabase: <span class="${cls}">${data.database}</span>`;
+      resultBox.textContent = `Status: ${data.status}\nEnvironment: ${data.environment}\nDatabase: ${data.database}`;
       document.getElementById('env-label').textContent = data.environment;
     } catch (e) {
       resultBox.textContent = 'Gagal menghubungi backend: ' + e.message;

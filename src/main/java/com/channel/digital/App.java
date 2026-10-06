@@ -33,7 +33,7 @@ public class App {
 
     public static HttpServer startServer(int port) throws IOException {
         HttpServer server = createServer(port);
-        server.setExecutor(null);
+        server.setExecutor(java.util.concurrent.Executors.newFixedThreadPool(8));
         server.start();
 
         String env = System.getenv().getOrDefault("APP_ENV", "unknown");
@@ -50,8 +50,11 @@ public class App {
 
     static Connection getDbConnection() throws SQLException {
         String url = getDbUrl();
-        String user = System.getenv().getOrDefault("DB_USER", "agen46");
-        String password = System.getenv().getOrDefault("DB_PASSWORD", "agen46pass");
+        String user = System.getenv("DB_USER");
+        String password = System.getenv("DB_PASSWORD");
+        if (user == null || password == null) {
+            throw new SQLException("DB credentials not configured");
+        }
         return DriverManager.getConnection(url, user, password);
     }
 
@@ -61,6 +64,15 @@ public class App {
         } catch (SQLException e) {
             System.out.println("DB health check gagal: " + e.getMessage());
             return false;
+        }
+    }
+
+    static void sendResponse(com.sun.net.httpserver.HttpExchange exchange, int statusCode, String response, String contentType) throws IOException {
+        exchange.getResponseHeaders().set("Content-Type", contentType);
+        byte[] bytes = response.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        exchange.sendResponseHeaders(statusCode, bytes.length);
+        try (OutputStream os = exchange.getResponseBody()) {
+            os.write(bytes);
         }
     }
 
@@ -88,11 +100,7 @@ public class App {
                     + "<p>Build: " + System.getenv().getOrDefault("BUILD_NUMBER", "N/A") + "</p>"
                     + "<img src='/photo' style='max-width:400px; border:4px solid white; border-radius:8px; margin-top:20px;' />"
                     + "</body></html>";
-            exchange.getResponseHeaders().set("Content-Type", "text/html");
-            exchange.sendResponseHeaders(200, html.getBytes().length);
-            try (OutputStream os = exchange.getResponseBody()) {
-                os.write(html.getBytes());
-            }
+            sendResponse(exchange, 200, html, "text/html");
             lastResponseTimeMs.put("root", System.currentTimeMillis() - start);
         });
 
@@ -118,24 +126,17 @@ public class App {
 
             sb.append("# HELP agen46_database_up Status koneksi database (1=up, 0=down)\n");
             sb.append("# TYPE agen46_database_up gauge\n");
-            sb.append("agen46_database_up ").append(isDatabaseHealthy() ? 1 : 0).append("\n");
+            sb.append("agen46_database_up ").append(dbCheck.getAsBoolean() ? 1 : 0).append("\n");
 
             String response = sb.toString();
-            exchange.getResponseHeaders().set("Content-Type", "text/plain; version=0.0.4");
-            exchange.sendResponseHeaders(200, response.getBytes().length);
-            try (OutputStream os = exchange.getResponseBody()) {
-                os.write(response.getBytes());
-            }
+            sendResponse(exchange, 200, response, "text/plain; version=0.0.4");
         });
 
         server.createContext("/photo", exchange -> {
             try (InputStream is = App.class.getResourceAsStream("/static/foto.jpg")) {
                 if (is == null) {
                     String notFound = "Gambar tidak ditemukan";
-                    exchange.sendResponseHeaders(404, notFound.getBytes().length);
-                    try (OutputStream os = exchange.getResponseBody()) {
-                        os.write(notFound.getBytes());
-                    }
+                    sendResponse(exchange, 404, notFound, "text/plain");
                     return;
                 }
                 byte[] imageBytes = is.readAllBytes();
@@ -154,11 +155,7 @@ public class App {
             int statusCode = dbUp ? 200 : 503;
             String response = "{\"status\":\"" + (dbUp ? "UP" : "DEGRADED") + "\",\"environment\":\"" + finalEnv
                     + "\",\"database\":\"" + (dbUp ? "UP" : "DOWN") + "\"}";
-            exchange.getResponseHeaders().set("Content-Type", "application/json");
-            exchange.sendResponseHeaders(statusCode, response.getBytes().length);
-            try (OutputStream os = exchange.getResponseBody()) {
-                os.write(response.getBytes());
-            }
+            sendResponse(exchange, statusCode, response, "application/json");
             lastResponseTimeMs.put("health", System.currentTimeMillis() - start);
         });
 
@@ -201,11 +198,7 @@ public class App {
                 statusCode = 500;
                 response = "{\"result\":\"error\",\"message\":\"" + e.getMessage().replace("\"", "'") + "\"}";
             }
-            exchange.getResponseHeaders().set("Content-Type", "application/json");
-            exchange.sendResponseHeaders(statusCode, response.getBytes().length);
-            try (OutputStream os = exchange.getResponseBody()) {
-                os.write(response.getBytes());
-            }
+            sendResponse(exchange, statusCode, response, "application/json");
             lastResponseTimeMs.put("test", System.currentTimeMillis() - start);
         });
 

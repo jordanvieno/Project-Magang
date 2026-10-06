@@ -15,14 +15,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class StatusServerTest {
 
-    private static final int PORT = 8097;
+    private static int PORT = 0;
     private static final HttpClient client = HttpClient.newHttpClient();
     private HttpServer server;
 
     @BeforeEach
     void startServer() throws Exception {
-        server = StatusServer.createServer(PORT);
+        server = StatusServer.createServer(0);
         server.start();
+        PORT = server.getAddress().getPort();
     }
 
     @AfterEach
@@ -64,13 +65,13 @@ class StatusServerTest {
 
     @Test
     void resolveColor_shouldMapAllKnownStages() {
-        assertEquals("#e74c3c", StatusServer.resolveColor("development"));
-        assertEquals("#f1c40f", StatusServer.resolveColor("testing"));
-        assertEquals("#2ecc71", StatusServer.resolveColor("production"));
-        assertEquals("#e67e22", StatusServer.resolveColor("production-rollback"));
-        assertEquals("#3498db", StatusServer.resolveColor("production-rollback-auto"));
-        assertEquals("#95a5a6", StatusServer.resolveColor("idle"));
-        assertEquals("#95a5a6", StatusServer.resolveColor("nggak-dikenal"));
+        assertEquals("#e74c3c", App.resolveColor("development"));
+        assertEquals("#f1c40f", App.resolveColor("testing"));
+        assertEquals("#2ecc71", App.resolveColor("production"));
+        assertEquals("#e67e22", App.resolveColor("production-rollback"));
+        assertEquals("#3498db", App.resolveColor("production-rollback-auto"));
+        assertEquals("#95a5a6", App.resolveColor("idle"));
+        assertEquals("#95a5a6", App.resolveColor("nggak-dikenal"));
     }
 
     private HttpResponse<String> get(String path) throws Exception {
