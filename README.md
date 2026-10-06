@@ -1,84 +1,102 @@
-# 🏦 Agen46 — Digital Channel Application
-
-> **CI/CD Pipeline untuk Enterprise Application Deployment**
-> Proyek magang yang mengimplementasikan pipeline CI/CD end-to-end pada aplikasi enterprise *Digital Channel* menggunakan Jenkins, Docker, Kubernetes, serta monitoring stack (Prometheus, Grafana, Loki).
-
----
-
-## 📋 Daftar Isi
-
-- [Overview](#-overview)
-- [Arsitektur Sistem](#-arsitektur-sistem)
-- [Arsitektur CI/CD Pipeline](#-arsitektur-cicd-pipeline)
-- [Tech Stack](#-tech-stack)
-- [Struktur Proyek](#-struktur-proyek)
-- [Pipeline Stages](#-pipeline-stages)
-- [Environment & Branching Strategy](#-environment--branching-strategy)
-- [Monitoring & Observability](#-monitoring--observability)
-- [API Endpoints](#-api-endpoints)
-- [Cara Menjalankan](#-cara-menjalankan)
-- [Konfigurasi](#-konfigurasi)
+**CI/CD Pipeline untuk Enterprise Application Deployment**
+>
+> Proyek magang yang mengimplementasikan pipeline CI/CD end-to-end pada aplikasi enterprise Digital Channel menggunakan Jenkins, Docker, Kubernetes, serta monitoring stack (Prometheus, Grafana, Loki).
 
 ---
 
-## 🔍 Overview
+## Daftar Isi
 
-**Agen46 Digital Channel App** adalah aplikasi backend berbasis Java yang menyediakan layanan pembayaran digital (*payment gateway*). Proyek ini berfokus pada pembangunan infrastruktur **CI/CD Pipeline** yang terotomasi penuh — mulai dari *code commit* hingga *production deployment* — dengan mekanisme **quality gate**, **security scanning**, **multi-environment deployment**, **auto-rollback**, serta **real-time monitoring**.
+- [Overview](#overview)
+- [Arsitektur Sistem](#arsitektur-sistem)
+- [Arsitektur CI/CD Pipeline](#arsitektur-cicd-pipeline)
+- [Tech Stack](#tech-stack)
+- [Struktur Proyek](#struktur-proyek)
+- [Pipeline Stages](#pipeline-stages)
+- [Environment & Branching Strategy](#environment--branching-strategy)
+- [Monitoring & Observability](#monitoring--observability)
+- [API Endpoints](#api-endpoints)
+- [Cara Menjalankan](#cara-menjalankan)
+- [Konfigurasi](#konfigurasi)
+
+---
+
+## Overview
+
+**Agen46 Digital Channel App** adalah aplikasi backend berbasis Java yang menyediakan layanan pembayaran digital (payment gateway). Proyek ini berfokus pada pembangunan infrastruktur **CI/CD Pipeline** yang terotomasi penuh — mulai dari code commit hingga production deployment — dengan mekanisme quality gate, security scanning, multi-environment deployment, auto-rollback, serta real-time monitoring.
 
 ### Fitur Utama
 
 | Fitur | Deskripsi |
 |---|---|
-| ✅ **Automated Quality Gate** | Unit test (JUnit 5) + code coverage check (JaCoCo, threshold 70%) |
-| 🐳 **Containerization** | Packaging aplikasi ke Docker image dengan registry lokal |
-| 🔒 **Security Scanning** | Pemindaian CVE menggunakan Trivy pada Docker image |
-| 🚀 **Multi-Environment Deploy** | Development → Testing → Production dengan approval gate |
-| 🔄 **Auto-Rollback** | Rollback otomatis di Production jika health check gagal |
-| 📊 **Real-time Monitoring** | Prometheus metrics + Grafana dashboard + Loki logging |
-| 💬 **Telegram Notification** | Notifikasi build sukses/gagal via Telegram Bot |
-| 🎨 **Frontend Dashboard** | Dashboard Nginx untuk monitoring kesehatan sistem |
-| 📈 **Load Testing** | Pengujian performa menggunakan k6 |
-| 🤖 **Infrastructure as Code** | Provisioning otomatis via Ansible playbook |
+| **Automated Quality Gate** | Unit test (JUnit 5) + code coverage check (JaCoCo, threshold 70%) |
+| **Containerization** | Packaging aplikasi ke Docker image dengan registry lokal |
+| **Security Scanning** | Pemindaian CVE menggunakan Trivy pada Docker image |
+| **Multi-Environment Deploy** | Development → Testing → Production dengan approval gate |
+| **Auto-Rollback** | Rollback otomatis di Production jika health check gagal |
+| **Real-time Monitoring** | Prometheus metrics + Grafana dashboard + Loki logging |
+| **Telegram Notification** | Notifikasi build sukses/gagal via Telegram Bot |
+| **Frontend Dashboard** | Dashboard Nginx untuk monitoring kesehatan sistem |
+| **Load Testing** | Pengujian performa menggunakan k6 |
+| **Infrastructure as Code** | Provisioning otomatis via Ansible playbook |
 
 ---
 
-## 🏗 Arsitektur Sistem
+## Arsitektur Sistem
 
 ```mermaid
 graph TB
     subgraph "Client Layer"
-        Browser["🌐 Browser"]
+        Browser["Browser"]
     end
 
     subgraph "Frontend Layer"
-        FE["🎨 Frontend Dashboard<br/>(Nginx + HTML/JS)<br/>Port: 8091/8093"]
+        FE_DEV["Frontend Dev<br/>(Nginx)<br/>Port: 8091"]
+        FE_TEST["Frontend Test<br/>(Nginx)<br/>Port: 8092"]
+        FE_PROD["Frontend Prod<br/>(Nginx)<br/>Port: 8093"]
     end
 
-    subgraph "Backend Layer"
-        BE_DEV["⚙️ Backend Dev<br/>Port: 8081"]
-        BE_TEST["⚙️ Backend Test<br/>Port: 8082"]
-        BE_PROD["⚙️ Backend Prod<br/>Port: 8083"]
-        STATUS["📊 Status Server<br/>Port: 9000"]
+    subgraph "Backend Layer — Development (HA)"
+        LB["Nginx Load Balancer<br/>Port: 8081"]
+        NODE1["Backend Node 1"]
+        NODE2["Backend Node 2"]
+        LB --> NODE1
+        LB --> NODE2
+    end
+
+    subgraph "Backend Layer — Testing & Production"
+        BE_TEST["Backend Test<br/>Port: 8082"]
+        BE_PROD["Backend Prod<br/>Port: 8083"]
+    end
+
+    subgraph "Pipeline"
+        STATUS["Status Server<br/>Port: 9000"]
     end
 
     subgraph "Data Layer"
-        DB_DEV[("🗄️ PostgreSQL Dev")]
-        DB_TEST[("🗄️ PostgreSQL Test")]
+        DB_DEV[("PostgreSQL Dev<br/>Port: 5433")]
+        DB_TEST[("PostgreSQL Test")]
+        DB_PROD[("PostgreSQL Prod")]
     end
 
     subgraph "Monitoring Stack"
-        PROM["📈 Prometheus<br/>Port: 9090"]
-        GRAF["📊 Grafana<br/>Port: 3000"]
-        LOKI["📝 Loki<br/>Port: 3100"]
-        PROMTAIL["📋 Promtail"]
+        PROM["Prometheus<br/>Port: 9090"]
+        GRAF["Grafana<br/>Port: 3000"]
+        LOKI["Loki<br/>Port: 3100"]
+        PROMTAIL["Promtail"]
     end
 
-    Browser --> FE
-    FE -->|"/api/*"| BE_DEV
-    FE -->|"/api/*"| BE_PROD
-    BE_DEV --> DB_DEV
+    Browser --> FE_DEV
+    Browser --> FE_PROD
+    FE_DEV -->|"/api/*"| LB
+    FE_PROD -->|"/api/*"| BE_PROD
+    NODE1 --> DB_DEV
+    NODE2 --> DB_DEV
     BE_TEST --> DB_TEST
-    BE_DEV -->|"/metrics"| PROM
+    BE_PROD --> DB_PROD
+    NODE1 -->|"/metrics"| PROM
+    NODE2 -->|"/metrics"| PROM
+    BE_TEST -->|"/metrics"| PROM
+    BE_PROD -->|"/metrics"| PROM
     PROM --> GRAF
     PROMTAIL --> LOKI
     LOKI --> GRAF
@@ -86,13 +104,13 @@ graph TB
 
 ---
 
-## 🔁 Arsitektur CI/CD Pipeline
+## Arsitektur CI/CD Pipeline
 
 Diagram berikut menggambarkan alur lengkap pipeline CI/CD yang diimplementasikan pada proyek ini:
 
 ```mermaid
 flowchart LR
-    subgraph TRIGGER ["🔔 Trigger"]
+    subgraph TRIGGER ["Trigger"]
         GIT["Git Push /<br/>Poll SCM"]
     end
 
@@ -114,45 +132,45 @@ flowchart LR
     end
 
     subgraph SECURITY ["Fase 1D — Security"]
-        TRIVY["🔒 Trivy Scan<br/>(HIGH/CRITICAL)"]
+        TRIVY["Trivy Scan<br/>(HIGH/CRITICAL)"]
     end
 
-    subgraph REGISTRY ["📦 Registry"]
+    subgraph REGISTRY ["Registry"]
         REG["Docker Registry<br/>localhost:5050"]
     end
 
-    subgraph DEV ["🟥 Development"]
+    subgraph DEV ["Development"]
         DEV_DEPLOY["Deploy Container<br/>Port: 8081"]
         DEV_SMOKE["Smoke Test<br/>(Health Check)"]
         DEV_DEPLOY --> DEV_SMOKE
     end
 
-    subgraph TEST ["🟡 Testing / SIT"]
-        TEST_APPROVE["⏸️ Manual<br/>Approval"]
+    subgraph TEST ["Testing / SIT"]
+        TEST_APPROVE["Manual<br/>Approval"]
         TEST_PROMOTE["Promote Image<br/>(Pull from Registry)"]
         TEST_DEPLOY["Deploy Container<br/>Port: 8082"]
         TEST_SMOKE["Smoke Test<br/>(Health Check)"]
         TEST_APPROVE --> TEST_PROMOTE --> TEST_DEPLOY --> TEST_SMOKE
     end
 
-    subgraph PROD ["🟢 Production"]
-        PROD_APPROVE["⏸️ Manual<br/>Approval"]
+    subgraph PROD ["Production"]
+        PROD_APPROVE["Manual<br/>Approval"]
         PROD_PROMOTE["Promote Image<br/>(Pull from Registry)"]
         PROD_DEPLOY["Deploy Container<br/>Port: 8083"]
         PROD_HEALTH["Health Check<br/>(5 retries)"]
-        PROD_STABLE["✅ Mark Stable"]
-        PROD_ROLLBACK["🔄 Auto-Rollback<br/>ke versi stabil"]
+        PROD_STABLE["Mark Stable"]
+        PROD_ROLLBACK["Auto-Rollback<br/>ke versi stabil"]
         PROD_APPROVE --> PROD_PROMOTE --> PROD_DEPLOY --> PROD_HEALTH
-        PROD_HEALTH -->|"✅ Sukses"| PROD_STABLE
-        PROD_HEALTH -->|"❌ Gagal"| PROD_ROLLBACK
+        PROD_HEALTH -->|"Sukses"| PROD_STABLE
+        PROD_HEALTH -->|"Gagal"| PROD_ROLLBACK
     end
 
-    subgraph NOTIFY ["📬 Notification"]
-        TG["🤖 Telegram Bot<br/>Notifikasi"]
-        STATUS_SRV["📊 Status Server<br/>Dashboard"]
+    subgraph NOTIFY ["Notification"]
+        TG["Telegram Bot"]
+        STATUS_SRV["Status Server<br/>Dashboard"]
     end
 
-    subgraph MONITOR ["📊 Monitoring"]
+    subgraph MONITOR ["Monitoring"]
         PROM2["Prometheus"]
         GRAF2["Grafana"]
         LOKI2["Loki + Promtail"]
@@ -206,13 +224,13 @@ flowchart LR
 
 ---
 
-## 🛠 Tech Stack
+## Tech Stack
 
 ### Application
 
 | Komponen | Teknologi | Versi |
 |---|---|---|
-| Backend | Java (OpenJDK) | 11 (compile) / 21 (runtime) |
+| Backend | Java (OpenJDK) | 21 (compile & runtime) |
 | HTTP Server | `com.sun.net.httpserver` | Built-in JDK |
 | Database | PostgreSQL | 16 Alpine |
 | Build Tool | Apache Maven | 3.9.9 |
@@ -224,8 +242,8 @@ flowchart LR
 |---|---|---|
 | CI/CD Engine | Jenkins | Orkestrasi pipeline |
 | Containerization | Docker | Packaging & deployment |
-| Container Registry | Docker Registry | Penyimpanan image (localhost:5050) |
-| Container Orchestration | Kubernetes | Deployment (manifest tersedia) |
+| Container Registry | Docker Registry | Penyimpanan image (localhost:5050, dengan autentikasi) |
+| Load Balancer | Nginx | Round-robin LB di environment Development |
 | Security Scan | Trivy | Pemindaian CVE pada image |
 | Unit Testing | JUnit 5 | Pengujian unit |
 | Code Coverage | JaCoCo | Analisis coverage (threshold 70%) |
@@ -251,49 +269,55 @@ flowchart LR
 
 ---
 
-## 📂 Struktur Proyek
+## Struktur Proyek
 
 ```
 Project_Magang_Linux/
-├── 📄 Jenkinsfile                  # Definisi pipeline CI/CD (382 baris)
-├── 🐳 Dockerfile                   # Docker image backend (JRE 21 Alpine)
-├── 🐳 Dockerfile.status            # Docker image StatusServer
-├── 📦 pom.xml                      # Maven build config + JaCoCo + Shade plugin
-├── 📝 app.log                      # Application log
+├── Jenkinsfile                     # Definisi pipeline CI/CD (536 baris)
+├── Dockerfile                      # Docker image backend (JRE 21 Alpine)
+├── pom.xml                         # Maven build config + JaCoCo + Shade plugin
+├── app.log                         # Application log
 │
-├── 📁 src/
-│   ├── 📁 main/java/com/channel/digital/
-│   │   ├── ☕ App.java              # Backend utama (HTTP server, REST API, Prometheus metrics)
-│   │   └── ☕ StatusServer.java     # Dashboard real-time status pipeline
-│   └── 📁 test/java/com/channel/digital/
-│       ├── ☕ AppTest.java           # Unit test untuk App
-│       └── ☕ StatusServerTest.java  # Unit test untuk StatusServer
+├── src/
+│   ├── main/
+│   │   ├── java/com/channel/digital/
+│   │   │   ├── App.java            # Backend utama (HTTP server, REST API, Prometheus metrics)
+│   │   │   └── StatusServer.java   # Dashboard real-time status pipeline
+│   │   └── resources/static/
+│   │       └── foto.jpg            # Gambar dinamis (di-download saat build berdasarkan commit hash)
+│   └── test/java/com/channel/digital/
+│       ├── AppTest.java            # Unit test untuk App
+│       └── StatusServerTest.java   # Unit test untuk StatusServer
 │
-├── 📁 frontend/
-│   ├── 🐳 Dockerfile               # Docker image frontend (Nginx Alpine)
-│   ├── 📄 index.html               # Dashboard UI frontend
-│   └── ⚙️ nginx.conf.template      # Nginx reverse proxy config
+├── frontend/
+│   ├── Dockerfile                  # Docker image frontend (Nginx Alpine)
+│   ├── index.html                  # Dashboard UI frontend
+│   └── nginx.conf.template         # Nginx reverse proxy config (template dengan envsubst)
 │
-├── 📁 k8s/
-│   └── ⚙️ backend-deployment.yaml  # Kubernetes Deployment + Service (NodePort)
+├── deploy/
+│   └── nginx-lb.conf               # Konfigurasi Nginx Load Balancer untuk Development (round-robin 2 node)
 │
-├── 📁 monitoring/
-│   ├── 🐳 docker-compose.yml       # Stack: Prometheus + Grafana + Loki + Promtail
-│   ├── ⚙️ prometheus.yml           # Scrape config untuk backend metrics
-│   ├── ⚙️ loki-config.yml          # Konfigurasi Loki
-│   ├── ⚙️ promtail-config.yml      # Konfigurasi Promtail
-│   ├── 🤖 setup-agen46.yml         # Ansible playbook (provisioning infra)
-│   ├── 📋 inventory.ini            # Ansible inventory
-│   └── 📈 load-test.js             # k6 load testing script
+├── auth/
+│   └── htpasswd                    # Kredensial autentikasi Docker Registry
 │
-└── 📁 digital-channel-app/         # Artefak tambahan
+├── monitoring/
+│   ├── .env                        # Environment variable Grafana (admin password)
+│   ├── docker-compose.yml          # Stack: Prometheus + Grafana + Loki + Promtail
+│   ├── prometheus.yml              # Scrape config (dev-node1, dev-node2, testing, prod)
+│   ├── loki-config.yml             # Konfigurasi Loki
+│   ├── promtail-config.yml         # Konfigurasi Promtail
+│   ├── setup-agen46.yml            # Ansible playbook (provisioning infra)
+│   ├── inventory.ini               # Ansible inventory
+│   └── load-test.js                # k6 load testing script
+│
+└── .github/modernize/              # GitHub Modernize hooks
 ```
 
 ---
 
-## 🔄 Pipeline Stages
+## Pipeline Stages
 
-Berikut adalah tahapan-tahapan pipeline secara detail beserta mekanismenya:
+Berikut tahapan pipeline secara detail beserta mekanismenya:
 
 ### Fase 0 — Test & Quality Gate
 
@@ -301,8 +325,8 @@ Berikut adalah tahapan-tahapan pipeline secara detail beserta mekanismenya:
 flowchart LR
     A["Spin Up<br/>PostgreSQL Test<br/>(port 55432)"] --> B["Jalankan<br/>mvn clean verify"]
     B --> C{"Coverage<br/>≥ 70%?"}
-    C -->|Ya| D["✅ GitHub Status:<br/>success"]
-    C -->|Tidak| E["❌ GitHub Status:<br/>failure"]
+    C -->|Ya| D["GitHub Status:<br/>success"]
+    C -->|Tidak| E["GitHub Status:<br/>failure"]
     D --> F["Deploy<br/>StatusServer"]
     E --> G["Pipeline<br/>DIHENTIKAN"]
 
@@ -335,19 +359,22 @@ flowchart LR
 - Fokus pada kerentanan severitas **HIGH** dan **CRITICAL**
 - Menghasilkan laporan dalam format tabel
 
-### Fase 2 — Deploy to Development (Otomatis)
+### Fase 2 — Deploy to Development (Otomatis, High Availability)
 
 - Deploy otomatis pada branch `developmentlinux`
-- Container dijalankan pada **port 8081** (backend) dan **port 8091** (frontend)
-- **Smoke test** otomatis mengecek endpoint `/api/v1/payments/health`
-- Update **StatusServer dashboard**
+- Arsitektur **High Availability**: 2 backend node + 1 Nginx Load Balancer (round-robin)
+  - `agen46-dev-node1` dan `agen46-dev-node2` menjalankan backend
+  - `agen46-dev` sebagai Nginx LB yang mendistribusikan traffic, diekspos pada **port 8081**
+- Frontend dijalankan pada **port 8091**
+- Smoke test otomatis mengecek endpoint LB `/api/v1/payments/health`
+- Update StatusServer dashboard
 
 ### Fase 3 — Deploy to Testing (Manual Approval)
 
 - Memerlukan **manual approval** sebelum deploy
-- Image di-**promote** (pull) dari registry — **tidak di-build ulang**
-- Container dijalankan pada **port 8082**
-- Smoke test otomatis setelah deploy
+- Image di-promote (pull) dari registry — **tidak di-build ulang**
+- Container dijalankan pada **port 8082** (backend) dan **port 8092** (frontend)
+- Smoke test otomatis setelah deploy (hingga 10 percobaan, interval 3 detik)
 
 ### Fase 4 — Deploy to Production (Manual Approval + Auto-Rollback)
 
@@ -356,10 +383,10 @@ flowchart TB
     A["Manual Approval"] --> B["Promote Image<br/>(Pull from Registry)"]
     B --> C["Deploy Container<br/>(Port: 8083)"]
     C --> D["Health Check<br/>(5 percobaan, interval 3s)"]
-    D -->|"HTTP 200"| E["✅ Tandai Stabil<br/>Simpan Build Number"]
-    D -->|"Non-200<br/>(setelah 5x)"| F["⚠️ AUTO-ROLLBACK"]
+    D -->|"HTTP 200"| E["Tandai Stabil<br/>Simpan Build Number"]
+    D -->|"Non-200<br/>(setelah 5x)"| F["AUTO-ROLLBACK"]
     F --> G["Deploy ulang<br/>versi stabil terakhir"]
-    G --> H["📩 Kirim alert<br/>Telegram"]
+    G --> H["Kirim alert<br/>Telegram"]
 
     style E fill:#55efc4,stroke:#00b894,color:#2d3436
     style F fill:#ff7675,stroke:#d63031,color:#2d3436
@@ -374,7 +401,7 @@ flowchart TB
 
 ---
 
-## 🌿 Environment & Branching Strategy
+## Environment & Branching Strategy
 
 ```mermaid
 gitGraph
@@ -391,19 +418,19 @@ gitGraph
     commit id: "promote-to-prod"
 ```
 
-| Branch | Environment | Port Backend | Port Frontend | Deploy |
-|---|---|---|---|---|
-| `developmentlinux` | Development | 8081 | 8091 | ✅ Otomatis |
-| `testing` | Testing / SIT | 8082 | 8091 | ⏸️ Manual Approval |
-| `production` | Production | 8083 | 8093 | ⏸️ Manual Approval + Auto-Rollback |
+| Branch | Environment | Port Backend | Port Frontend | Deploy | Arsitektur |
+|---|---|---|---|---|---|
+| `developmentlinux` | Development | 8081 (via LB) | 8091 | Otomatis | HA (2 node + Nginx LB) |
+| `testing` | Testing / SIT | 8082 | 8092 | Manual Approval | Single instance |
+| `production` | Production | 8083 | 8093 | Manual Approval + Auto-Rollback | Single instance |
 
 ### Prinsip Immutable Artifact
 
-> 🔑 **Image di-build hanya SATU KALI di branch `developmentlinux`**, lalu di-**promote** (pull dari registry) ke Testing dan Production — memastikan artefak yang identik dikirim ke semua environment.
+> Image di-build hanya **satu kali** di branch `developmentlinux`, lalu di-promote (pull dari registry) ke Testing dan Production — memastikan artefak yang identik dikirim ke semua environment.
 
 ---
 
-## 📊 Monitoring & Observability
+## Monitoring & Observability
 
 ### Metrics (Prometheus)
 
@@ -440,19 +467,19 @@ Threshold:
 
 ### Pipeline Status Dashboard
 
-Aplikasi `StatusServer` (port 9000) menampilkan status deployment real-time dengan warna:
+Aplikasi `StatusServer` (port 9000) menampilkan status deployment real-time dengan indikator warna:
 
 | Tahap | Warna |
 |---|---|
-| Development | 🟥 Merah (`#e74c3c`) |
-| Testing | 🟡 Kuning (`#f1c40f`) |
-| Production | 🟢 Hijau (`#2ecc71`) |
-| Production Rollback | 🟠 Oranye (`#e67e22`) |
-| Auto-Rollback | 🔵 Biru (`#3498db`) |
+| Development | Merah (`#e74c3c`) |
+| Testing | Kuning (`#f1c40f`) |
+| Production | Hijau (`#2ecc71`) |
+| Production Rollback | Oranye (`#e67e22`) |
+| Auto-Rollback | Biru (`#3498db`) |
 
 ---
 
-## 🌐 API Endpoints
+## API Endpoints
 
 | Endpoint | Method | Deskripsi |
 |---|---|---|
@@ -474,11 +501,11 @@ Aplikasi `StatusServer` (port 9000) menampilkan status deployment real-time deng
 
 ---
 
-## 🚀 Cara Menjalankan
+## Cara Menjalankan
 
 ### Prasyarat
 
-- **Java** 11+ (compile) / 21 (runtime)
+- **Java** 21 (compile & runtime)
 - **Maven** 3.9.9
 - **Docker** & Docker Compose
 - **Jenkins** (dengan plugin: Pipeline, Git, JaCoCo, JUnit, Credentials)
@@ -508,11 +535,24 @@ docker build -t agen46-backend:latest .
 # Build frontend image
 cd frontend
 docker build -t agen46-frontend:latest .
+cd ..
 
-# Run
+# Buat network
 docker network create agen46-net
-docker run -d --name agen46-dev --network agen46-net -p 8081:8080 agen46-backend:latest
-docker run -d --name agen46-frontend-dev --network agen46-net -p 8091:80 agen46-frontend:latest
+
+# Jalankan 2 backend node (HA)
+docker run -d --name agen46-dev-node1 --network agen46-net \
+  -e APP_ENV=development agen46-backend:latest
+docker run -d --name agen46-dev-node2 --network agen46-net \
+  -e APP_ENV=development agen46-backend:latest
+
+# Jalankan Nginx Load Balancer
+docker run -d --name agen46-dev --network agen46-net -p 8081:80 \
+  -v $(pwd)/deploy/nginx-lb.conf:/etc/nginx/conf.d/default.conf nginx:alpine
+
+# Jalankan frontend
+docker run -d --name agen46-frontend-dev --network agen46-net -p 8091:80 \
+  -e BACKEND_HOST=agen46-dev -e BACKEND_PORT=80 agen46-frontend:latest
 ```
 
 ### 4. Jalankan Monitoring Stack
@@ -541,7 +581,7 @@ k6 run monitoring/load-test.js
 
 ---
 
-## ⚙️ Konfigurasi
+## Konfigurasi
 
 ### Environment Variables
 
@@ -553,17 +593,20 @@ k6 run monitoring/load-test.js
 | `DB_HOST` | `localhost` | Host database PostgreSQL |
 | `DB_PORT` | `5432` | Port database |
 | `DB_NAME` | `agen46_dev` | Nama database |
-| `DB_USER` | `agen46` | Username database |
-| `DB_PASSWORD` | `agen46pass` | Password database |
-| `BACKEND_HOST` | `agen46-dev` | Host backend (untuk Nginx proxy) |
+| `DB_USER` | — | Username database |
+| `DB_PASSWORD` | — | Password database |
+| `BACKEND_HOST` | `agen46-dev` | Host backend (untuk Nginx frontend proxy) |
+| `BACKEND_PORT` | `8080` | Port backend (80 jika melalui LB) |
 
 ### Jenkins Credentials
 
 | Credential ID | Tipe | Fungsi |
 |---|---|---|
 | `github-status-token` | Secret Text | Token GitHub untuk commit status |
+| `REGISTRY_CREDS` | Username/Password | Kredensial autentikasi Docker Registry |
 | `agen46-db-test-credentials` | Username/Password | Kredensial DB test |
 | `agen46-db-dev-credentials` | Username/Password | Kredensial DB development |
+| `agen46-db-prod-credentials` | Username/Password | Kredensial DB production |
 | `Token_Bot_Telegram` | Secret Text | Token Telegram Bot |
 | `Telegram-Chat-ID` | Secret Text | Chat ID Telegram |
 
@@ -576,7 +619,7 @@ k6 run monitoring/load-test.js
 
 ---
 
-## 📜 Lisensi
+## Lisensi
 
 Proyek ini dikembangkan sebagai bagian dari program magang di [IPB University](https://ipb.ac.id).
 
@@ -584,5 +627,6 @@ Proyek ini dikembangkan sebagai bagian dari program magang di [IPB University](h
 
 <p align="center">
   <b>Agen46 Digital Channel App</b><br/>
-  Built with ☕ Java • 🐳 Docker • 🔧 Jenkins • 📊 Prometheus & Grafana
+  Java · Docker · Jenkins · Prometheus & Grafana
 </p>
+
