@@ -1,6 +1,7 @@
-**CI/CD Pipeline untuk Enterprise Application Deployment**
->
-> Proyek magang yang mengimplementasikan pipeline CI/CD end-to-end pada aplikasi enterprise Digital Channel menggunakan Jenkins, Docker, Kubernetes, serta monitoring stack (Prometheus, Grafana, Loki).
+# Agen46 — Digital Channel Application
+
+> **CI/CD Pipeline untuk Enterprise Application Deployment**
+> Proyek magang yang mengimplementasikan pipeline CI/CD end-to-end pada aplikasi enterprise Digital Channel menggunakan Jenkins, Docker, serta monitoring stack (Prometheus, Grafana, Loki).
 
 ---
 
@@ -30,11 +31,11 @@
 |---|---|
 | **Automated Quality Gate** | Unit test (JUnit 5) + code coverage check (JaCoCo, threshold 70%) |
 | **Containerization** | Packaging aplikasi ke Docker image dengan registry lokal |
-| **Security Scanning** | Pemindaian CVE menggunakan Trivy pada Docker image |
+| **Security Scanning** | Pemindaian CVE menggunakan Trivy; image baru di-push ke registry setelah lolos scan |
 | **Multi-Environment Deploy** | Development → Testing → Production dengan approval gate |
 | **Auto-Rollback** | Rollback otomatis di Production jika health check gagal |
 | **Real-time Monitoring** | Prometheus metrics + Grafana dashboard + Loki logging |
-| **Telegram Notification** | Notifikasi build sukses/gagal via Telegram Bot |
+| **Telegram Notification** | Notifikasi build sukses, gagal, unstable, dan auto-rollback via Telegram Bot |
 | **Frontend Dashboard** | Dashboard Nginx untuk monitoring kesehatan sistem |
 | **Load Testing** | Pengujian performa menggunakan k6 |
 | **Infrastructure as Code** | Provisioning otomatis via Ansible playbook |
@@ -73,7 +74,7 @@ graph TB
     end
 
     subgraph "Data Layer"
-        DB_DEV[("PostgreSQL Dev<br/>Port: 5433")]
+        DB_DEV[("PostgreSQL Dev<br/>localhost:5433")]
         DB_TEST[("PostgreSQL Test")]
         DB_PROD[("PostgreSQL Prod")]
     end
@@ -111,7 +112,7 @@ Diagram berikut menggambarkan alur lengkap pipeline CI/CD yang diimplementasikan
 ```mermaid
 flowchart LR
     subgraph TRIGGER ["Trigger"]
-        GIT["Git Push /<br/>Poll SCM"]
+        GIT["Git Push /<br/>Poll SCM<br/>(Setiap 5 menit)"]
     end
 
     subgraph QG ["Fase 0 — Quality Gate"]
@@ -132,7 +133,7 @@ flowchart LR
     end
 
     subgraph SECURITY ["Fase 1D — Security"]
-        TRIVY["Trivy Scan<br/>(HIGH/CRITICAL)"]
+        TRIVY["Trivy Scan<br/>(HIGH info, CRITICAL blokir)<br/>lalu Push Image"]
     end
 
     subgraph REGISTRY ["Registry"]
@@ -181,11 +182,10 @@ flowchart LR
     BUILD --> SECURITY
     SECURITY --> REG
     FE_BUILD --> REG
-    DOCKER --> REG
     REG --> DEV
     REG --> TEST
     REG --> PROD
-    DEV_SMOKE --> NOTIFY
+    DEV_SMOKE -->|"Gagal = UNSTABLE"| NOTIFY
     TEST_SMOKE --> NOTIFY
     PROD_STABLE --> NOTIFY
     PROD_ROLLBACK --> NOTIFY
@@ -273,26 +273,26 @@ flowchart LR
 
 ```
 Project_Magang_Linux/
-├── Jenkinsfile                     # Definisi pipeline CI/CD (536 baris)
-├── Dockerfile                      # Docker image backend (JRE 21 Alpine)
+├── Jenkinsfile                     # Definisi pipeline CI/CD (helper tg() & ghStatus())
+├── Dockerfile                      # Docker image backend (JRE 21 Alpine, non-root)
 ├── pom.xml                         # Maven build config + JaCoCo + Shade plugin
 ├── app.log                         # Application log
 │
 ├── src/
 │   ├── main/
 │   │   ├── java/com/channel/digital/
-│   │   │   ├── App.java            # Backend utama (HTTP server, REST API, Prometheus metrics)
-│   │   │   └── StatusServer.java   # Dashboard real-time status pipeline
+│   │   │   ├── App.java            # Backend utama (HTTP server, REST API, Prometheus metrics, helper sendResponse & resolveColor)
+│   │   │   └── StatusServer.java   # Dashboard real-time status pipeline (input /update divalidasi)
 │   │   └── resources/static/
 │   │       └── foto.jpg            # Gambar dinamis (di-download saat build berdasarkan commit hash)
 │   └── test/java/com/channel/digital/
-│       ├── AppTest.java            # Unit test untuk App
-│       └── StatusServerTest.java   # Unit test untuk StatusServer
+│       ├── AppTest.java            # Test untuk App (port acak; test DB bertag `integration`)
+│       └── StatusServerTest.java   # Unit test untuk StatusServer (port acak)
 │
 ├── frontend/
 │   ├── Dockerfile                  # Docker image frontend (Nginx Alpine)
 │   ├── index.html                  # Dashboard UI frontend
-│   └── nginx.conf.template         # Nginx reverse proxy config (template dengan envsubst)
+│   └── nginx.conf.template         # Nginx reverse proxy (template envsubst: BACKEND_HOST & BACKEND_PORT, resolver DNS Docker)
 │
 ├── deploy/
 │   └── nginx-lb.conf               # Konfigurasi Nginx Load Balancer untuk Development (round-robin 2 node)
@@ -301,12 +301,12 @@ Project_Magang_Linux/
 │   └── htpasswd                    # Kredensial autentikasi Docker Registry
 │
 ├── monitoring/
-│   ├── .env                        # Environment variable Grafana (admin password)
+│   ├── .env                        # GF_SECURITY_ADMIN_PASSWORD untuk Grafana (tidak di-commit)
 │   ├── docker-compose.yml          # Stack: Prometheus + Grafana + Loki + Promtail
-│   ├── prometheus.yml              # Scrape config (dev-node1, dev-node2, testing, prod)
+│   ├── prometheus.yml              # Scrape config tiap 15 detik (dev-node1, dev-node2, testing, prod)
 │   ├── loki-config.yml             # Konfigurasi Loki
-│   ├── promtail-config.yml         # Konfigurasi Promtail
-│   ├── setup-agen46.yml            # Ansible playbook (provisioning infra)
+│   ├── promtail-config.yml         # Konfigurasi Promtail (posisi baca log disimpan di volume)
+│   ├── setup-agen46.yml            # Ansible playbook (provisioning infra, path via playbook_dir)
 │   ├── inventory.ini               # Ansible inventory
 │   └── load-test.js                # k6 load testing script
 │
@@ -318,6 +318,14 @@ Project_Magang_Linux/
 ## Pipeline Stages
 
 Berikut tahapan pipeline secara detail beserta mekanismenya:
+
+### Opsi Pipeline
+
+- `pollSCM('H/5 * * * *')` — cek perubahan repo sekitar tiap 5 menit
+- `disableConcurrentBuilds()` — build tidak berjalan bersamaan (mencegah bentrok nama container dan port)
+- `timeout` **1 jam** per build
+- `buildDiscarder` — hanya **5 build terakhir** yang disimpan
+- Helper `tg()` (Telegram, teks di-URL-encode) dan `ghStatus()` (GitHub commit status) dipakai ulang di semua stage
 
 ### Fase 0 — Test & Quality Gate
 
@@ -335,29 +343,37 @@ flowchart LR
     style E fill:#ff7675,stroke:#d63031,color:#2d3436
 ```
 
-- Membuat **database PostgreSQL sementara** via Docker untuk isolasi test
-- Menjalankan **unit test** menggunakan JUnit 5
+- Membuat **database PostgreSQL sementara** via Docker untuk isolasi test (port `55432` hanya di `127.0.0.1`)
+- Jika PostgreSQL tidak siap setelah menunggu, stage **langsung gagal** (fail-fast)
+- Menjalankan **unit test** menggunakan JUnit 5 (test yang butuh DB bertag `integration`)
 - Mengecek **code coverage** dengan JaCoCo (minimum threshold: **70%**)
 - Melaporkan status ke **GitHub Commit Status API** (pending → success/failure)
 - Jika gagal, pipeline langsung **dihentikan**
 
 ### Fase 1A/1B — Build & Package (Parallel)
 
-- **1A — Backend Build**: `mvn package -DskipTests` → menghasilkan uber-JAR via Maven Shade plugin
+- **1A — Backend Build**: download `foto.jpg` (`curl -fsSL --retry 3`, gagal jika error HTTP), lalu `mvn package -DskipTests` → menghasilkan uber-JAR via Maven Shade plugin (compile `release 21`)
 - **1B — Frontend Build**: `docker build` pada folder `frontend/` → image Nginx + static assets
 - Kedua proses berjalan **paralel** untuk efisiensi waktu
 
 ### Fase 1C — Containerization
 
 - Membungkus JAR hasil build ke **Docker image** (`eclipse-temurin:21-jre-alpine`)
-- Push image ke **Docker Registry** lokal (`localhost:5050`)
-- Tagging image dengan format: `{branch}-{buildNumber}` dan `{branch}-latest`
+- Menggunakan *non-root user* (`appuser`) pada Dockerfile backend untuk meningkatkan keamanan (image frontend Nginx tetap root karena perlu bind port 80)
+- Image di-build dengan tag `{GIT_SHA}`; **belum di-push** pada tahap ini
 
 ### Fase 1D — Security Scan
 
 - Memindai Docker image menggunakan **Trivy**
-- Fokus pada kerentanan severitas **HIGH** dan **CRITICAL**
+- **HIGH**: hanya informasi (`exit-code 0`), pipeline lanjut
+- **CRITICAL** (yang sudah ada patch, `--ignore-unfixed`): pipeline **dihentikan**
 - Menghasilkan laporan dalam format tabel
+
+### Fase 1D-bis — Push Image ke Registry
+
+- Push ke **Docker Registry** lokal (`localhost:5050`, dengan autentikasi) **hanya setelah lolos scan**, sehingga image rentan tidak masuk registry
+- Tag di registry: `{GIT_SHA}`
+- Tag lokal: `{branch}-{buildNumber}` dan `{branch}-latest`
 
 ### Fase 2 — Deploy to Development (Otomatis, High Availability)
 
@@ -365,15 +381,17 @@ flowchart LR
 - Arsitektur **High Availability**: 2 backend node + 1 Nginx Load Balancer (round-robin)
   - `agen46-dev-node1` dan `agen46-dev-node2` menjalankan backend
   - `agen46-dev` sebagai Nginx LB yang mendistribusikan traffic, diekspos pada **port 8081**
-- Frontend dijalankan pada **port 8091**
-- Smoke test otomatis mengecek endpoint LB `/api/v1/payments/health`
+- PostgreSQL dev (`agen46-db-dev`) hanya terbuka di `127.0.0.1:5433`
+- Konfigurasi LB diambil dari `deploy/nginx-lb.conf` (tidak lagi dibuat lewat `echo` di Jenkinsfile)
+- Frontend dijalankan pada **port 8091** dengan `BACKEND_PORT=80` (menuju LB)
+- Smoke test otomatis mengecek endpoint LB `/api/v1/payments/health`; jika gagal, build berstatus **UNSTABLE** dan Telegram tetap dikirim
 - Update StatusServer dashboard
 
 ### Fase 3 — Deploy to Testing (Manual Approval)
 
 - Memerlukan **manual approval** sebelum deploy
 - Image di-promote (pull) dari registry — **tidak di-build ulang**
-- Container dijalankan pada **port 8082** (backend) dan **port 8092** (frontend)
+- Container dijalankan pada **port 8082** (backend) dan **port 8092** (frontend, `BACKEND_PORT=8080`)
 - Smoke test otomatis setelah deploy (hingga 10 percobaan, interval 3 detik)
 
 ### Fase 4 — Deploy to Production (Manual Approval + Auto-Rollback)
@@ -397,7 +415,9 @@ flowchart TB
 - Health check dengan **5 kali percobaan** (interval 3 detik)
 - Jika sukses: build number disimpan sebagai **versi stabil terakhir**
 - Jika gagal: **auto-rollback** ke versi stabil terakhir + notifikasi Telegram
-- Mendukung juga **manual rollback** via parameter `ROLLBACK_VERSION`
+- Rollback (otomatis maupun manual) menjalankan `docker pull` image `production-{build}` dari **registry** dulu, bukan dari cache lokal
+- Mendukung juga **manual rollback** via parameter `ROLLBACK_VERSION` (harus angka)
+- Frontend production memakai `BACKEND_PORT=8080`; Nginx me-resolve DNS ulang tiap 5 detik, jadi tetap terhubung setelah container backend dibuat ulang saat rollback
 
 ---
 
@@ -434,7 +454,7 @@ gitGraph
 
 ### Metrics (Prometheus)
 
-Aplikasi meng-expose endpoint `/metrics` dalam format Prometheus:
+Aplikasi meng-expose endpoint `/metrics` dalam format Prometheus. Prometheus melakukan scrape tiap **15 detik** ke 4 target (`dev-node1`, `dev-node2`, `testing`, `prod`) dengan label `env` dan `instance_name`:
 
 | Metric | Tipe | Deskripsi |
 |---|---|---|
@@ -445,13 +465,13 @@ Aplikasi meng-expose endpoint `/metrics` dalam format Prometheus:
 
 ### Logging (Loki + Promtail)
 
-- **Promtail** mengumpulkan log dari semua container Docker
+- **Promtail** mengumpulkan log dari semua container Docker (posisi baca disimpan di volume `agen46-promtail-data`, sehingga log tidak terkirim ulang setelah restart)
 - **Loki** sebagai backend log aggregation
 - Divisualisasikan di **Grafana**
 
 ### Load Testing (k6)
 
-Skenario load test yang digunakan:
+Skenario load test (target `http://agen46-dev`, yaitu Nginx LB di port 80) yang digunakan:
 
 ```
 0s–30s    → Ramp up ke 10 virtual users
@@ -477,6 +497,8 @@ Aplikasi `StatusServer` (port 9000) menampilkan status deployment real-time deng
 | Production Rollback | Oranye (`#e67e22`) |
 | Auto-Rollback | Biru (`#3498db`) |
 
+Endpoint `/update?stage=...&build=...` memvalidasi input: `stage` hanya huruf, angka, dan `-`; `build` hanya angka. Parameter tanpa nilai diabaikan (tidak lagi menyebabkan error).
+
 ---
 
 ## API Endpoints
@@ -486,8 +508,10 @@ Aplikasi `StatusServer` (port 9000) menampilkan status deployment real-time deng
 | `/` | GET | Landing page backend (HTML, auto-refresh) |
 | `/api/v1/payments/health` | GET | Health check (status + environment + DB) |
 | `/api/v1/payments/test` | GET | Insert test data ke PostgreSQL |
-| `/metrics` | GET | Prometheus metrics (text/plain) |
+| `/metrics` | GET | Prometheus metrics (text/plain), status DB memakai health check yang sama dengan `/health` |
 | `/photo` | GET | Gambar dinamis (dari build artifact) |
+
+Server memakai thread pool (8 thread) sehingga request tidak saling menunggu.
 
 ### Contoh Response — Health Check
 
@@ -498,6 +522,8 @@ Aplikasi `StatusServer` (port 9000) menampilkan status deployment real-time deng
   "database": "UP"
 }
 ```
+
+Jika database tidak terjangkau, endpoint mengembalikan HTTP **503** dengan `"status": "DEGRADED"` dan `"database": "DOWN"`.
 
 ---
 
@@ -510,6 +536,7 @@ Aplikasi `StatusServer` (port 9000) menampilkan status deployment real-time deng
 - **Docker** & Docker Compose
 - **Jenkins** (dengan plugin: Pipeline, Git, JaCoCo, JUnit, Credentials)
 - **PostgreSQL** 16
+- **Ansible** (untuk provisioning) dan **k6** (untuk load test)
 
 ### 1. Clone Repository
 
@@ -540,11 +567,19 @@ cd ..
 # Buat network
 docker network create agen46-net
 
+# Jalankan PostgreSQL (kredensial wajib, backend tidak punya password default)
+docker run -d --name agen46-db-dev --network agen46-net \
+  -p 127.0.0.1:5433:5432 \
+  -e POSTGRES_USER=<DB_USER> -e POSTGRES_PASSWORD=<DB_PASSWORD> -e POSTGRES_DB=agen46_dev \
+  postgres:16-alpine
+
 # Jalankan 2 backend node (HA)
 docker run -d --name agen46-dev-node1 --network agen46-net \
-  -e APP_ENV=development agen46-backend:latest
+  -e APP_ENV=development -e DB_HOST=agen46-db-dev -e DB_NAME=agen46_dev \
+  -e DB_USER=<DB_USER> -e DB_PASSWORD=<DB_PASSWORD> agen46-backend:latest
 docker run -d --name agen46-dev-node2 --network agen46-net \
-  -e APP_ENV=development agen46-backend:latest
+  -e APP_ENV=development -e DB_HOST=agen46-db-dev -e DB_NAME=agen46_dev \
+  -e DB_USER=<DB_USER> -e DB_PASSWORD=<DB_PASSWORD> agen46-backend:latest
 
 # Jalankan Nginx Load Balancer
 docker run -d --name agen46-dev --network agen46-net -p 8081:80 \
@@ -557,14 +592,17 @@ docker run -d --name agen46-frontend-dev --network agen46-net -p 8091:80 \
 
 ### 4. Jalankan Monitoring Stack
 
+Buat file `monitoring/.env` (tidak di-commit) berisi password Grafana:
+
 ```bash
 cd monitoring
+echo 'GF_SECURITY_ADMIN_PASSWORD=<password-baru>' > .env
 docker-compose up -d
 ```
 
 Akses:
 - Prometheus: http://localhost:9090
-- Grafana: http://localhost:3000 (admin / agen46admin)
+- Grafana: http://localhost:3000 (user `admin`, password dari `.env`)
 
 ### 5. Provisioning dengan Ansible
 
@@ -572,6 +610,8 @@ Akses:
 cd monitoring
 ansible-playbook -i inventory.ini setup-agen46.yml
 ```
+
+Path folder monitoring diambil otomatis dari lokasi playbook (`playbook_dir`), tidak perlu diubah manual. Script `deploy-statusserver.sh` hanya memakai jar dari workspace branch `developmentlinux`.
 
 ### 6. Jalankan Load Test
 
@@ -593,10 +633,11 @@ k6 run monitoring/load-test.js
 | `DB_HOST` | `localhost` | Host database PostgreSQL |
 | `DB_PORT` | `5432` | Port database |
 | `DB_NAME` | `agen46_dev` | Nama database |
-| `DB_USER` | — | Username database |
-| `DB_PASSWORD` | — | Password database |
+| `DB_USER` | — | Username database (**wajib**, tanpa default) |
+| `DB_PASSWORD` | — | Password database (**wajib**, tanpa default) |
 | `BACKEND_HOST` | `agen46-dev` | Host backend (untuk Nginx frontend proxy) |
 | `BACKEND_PORT` | `8080` | Port backend (80 jika melalui LB) |
+| `GF_SECURITY_ADMIN_PASSWORD` | — | Password admin Grafana (dari `monitoring/.env`) |
 
 ### Jenkins Credentials
 
