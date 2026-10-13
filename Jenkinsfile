@@ -515,13 +515,13 @@ pipeline {
         }
         success {
             script {
-                tg("✅ Pipeline SUKSES — branch: ${env.BRANCH_NAME}, build: #${env.BUILD_NUMBER}")
+                tg("✅ Pipeline Sukses — branch: ${env.BRANCH_NAME}, build: #${env.BUILD_NUMBER}")
             }
             echo "Pipeline sukses untuk branch: ${env.BRANCH_NAME}"
         }
         failure {
             script {
-                tg("❌ Pipeline GAGAL — branch: ${env.BRANCH_NAME}, build: #${env.BUILD_NUMBER}")
+                tg("❌ Pipeline Gagal — branch: ${env.BRANCH_NAME}, build: #${env.BUILD_NUMBER}")
             }
             echo "Pipeline GAGAL untuk branch: ${env.BRANCH_NAME}"
         }
