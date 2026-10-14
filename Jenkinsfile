@@ -1,22 +1,26 @@
-def tg(msg) {
-    withCredentials([string(credentialsId: 'Token_Bot_Telegram', variable: 'TG_TOKEN'), string(credentialsId: 'Telegram-Chat-ID', variable: 'TG_CHAT')]) {
-        sh """
-        curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \\
-            --data-urlencode "chat_id=${TG_CHAT}" \\
-            --data-urlencode "text=${msg}"
-        """
+def tg(String msg) {
+    withCredentials([string(credentialsId: 'Token_Bot_Telegram', variable: 'TG_TOKEN'),
+                     string(credentialsId: 'Telegram-Chat-ID', variable: 'TG_CHAT')]) {
+        withEnv(["TG_MSG=${msg}"]) {
+            sh '''
+            curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+              --data-urlencode "chat_id=${TG_CHAT}" --data-urlencode "text=${TG_MSG}"
+            '''
+        }
     }
 }
 
-def ghStatus(state, desc, sha) {
+def ghStatus(String state, String desc, String sha) {
     withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
-        sh """
-        curl -s -X POST \\
-          -H "Authorization: token ${GH_TOKEN}" \\
-          -H "Accept: application/vnd.github+json" \\
-          https://api.github.com/repos/jordanvieno/Project-Magang/statuses/${sha} \\
-          -d '{"state":"${state}","context":"jenkins/quality-gate","description":"${desc}"}'
-        """
+        withEnv(["GH_STATE=${state}", "GH_DESC=${desc}", "GH_SHA=${sha}"]) {
+            sh '''
+            curl -s -X POST \
+              -H "Authorization: token ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              https://api.github.com/repos/jordanvieno/Project-Magang/statuses/${GH_SHA} \
+              -d "{\\"state\\":\\"${GH_STATE}\\",\\"context\\":\\"jenkins/quality-gate\\",\\"description\\":\\"${GH_DESC}\\"}"
+            '''
+        }
     }
 }
 
@@ -48,6 +52,10 @@ pipeline {
     }
 
     stages {
+        stage('Validasi Rollback') {
+            when { expression { params.DEPLOY_ACTION == 'Rollback' && env.BRANCH_NAME != 'production' } }
+            steps { error("Rollback hanya boleh di branch production, bukan ${env.BRANCH_NAME}") }
+        }
 
         stage('Test & Quality Gate') {
             when { expression { params.DEPLOY_ACTION != 'Rollback' } }
@@ -55,10 +63,8 @@ pipeline {
                 script {
                     env.GIT_SHA = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
                 }
-                withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
                     ghStatus('pending', 'Menjalankan unit test & coverage check...', env.GIT_SHA)
-                }
-                echo 'Menyiapkan PostgresSQL sementara untuk testing...'
+                    echo 'Menyiapkan PostgresSQL sementara untuk testing...'
                 withCredentials([usernamePassword(credentialsId: 'agen46-db-test-credentials', usernameVariable: 'DB_TEST_USER', passwordVariable: 'DB_TEST_PASS')]) {
                     sh '''
                     docker rm -f agen46-db-test || true
@@ -92,15 +98,11 @@ pipeline {
                 }
                 success {
                     sh 'sudo /usr/local/bin/deploy-statusserver.sh'
-                    withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
-                        ghStatus('success', 'Test lolos & coverage memenuhi threshold 70%', env.GIT_SHA)
-                    }
+                    ghStatus('success', 'Test lolos & coverage memenuhi threshold 70%', env.GIT_SHA)
                     echo 'Status Quality Gate: PASSED'
                 }
                 failure {
-                    withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
-                        ghStatus('failure', 'Test gagal atau coverage di bawah threshold', env.GIT_SHA)
-                    }
+                    ghStatus('failure', 'Test gagal atau coverage di bawah threshold', env.GIT_SHA)
                     echo 'Status Quality Gate: FAILED — pipeline dihentikan.'
                 }
             }
@@ -218,6 +220,8 @@ pipeline {
                     echo "${REG_PASS}" | docker login ${REGISTRY} -u ${REG_USER} --password-stdin
 
                     docker pull ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA}
+                    docker tag ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA} ${REGISTRY}/${IMAGE_NAME}:${BRANCH_NAME}-${BUILD_NUMBER}
+                    docker push ${REGISTRY}/${IMAGE_NAME}:${BRANCH_NAME}-${BUILD_NUMBER}
                     docker tag ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA} ${IMAGE_NAME}:${BRANCH_NAME}-${BUILD_NUMBER}
                     docker tag ${REGISTRY}/${IMAGE_NAME}:${GIT_SHA} ${IMAGE_NAME}:${BRANCH_NAME}-latest
 
@@ -394,32 +398,24 @@ pipeline {
                             if (!(params.ROLLBACK_VERSION ==~ /\d+/)) {
                                 error("ROLLBACK_VERSION harus berupa angka, bukan '${params.ROLLBACK_VERSION}'")
                             }
-                            echo "ROLLBACK MANUAL ke versi production-${params.ROLLBACK_VERSION}..."
-                            sh '''
-                            docker network create agen46-net || true
+                             echo "ROLLBACK MANUAL ke versi production-${params.ROLLBACK_VERSION}..."
+                            withCredentials([usernamePassword(credentialsId: 'REGISTRY_CREDS', passwordVariable: 'REG_PASS', usernameVariable: 'REG_USER')]) {
+                                sh '''
+                                echo "${REG_PASS}" | docker login ${REGISTRY} -u ${REG_USER} --password-stdin
 
-                            docker inspect agen46-db-prod >/dev/null 2>&1 || \
-                            docker run -d --name agen46-db-prod --network agen46-net --restart unless-stopped \
-                            -e POSTGRES_USER=${DB_PROD_USER} -e POSTGRES_PASSWORD=${DB_PROD_PASS} \
-                            -e POSTGRES_DB=agen46_prod \
-                            -v agen46-db-prod-data:/var/lib/postgresql/data \
-                            postgres:16-alpine
+                                IMG=${REGISTRY}/${IMAGE_NAME}:production-${ROLLBACK_VERSION}
+                                docker pull $IMG || IMG=${IMAGE_NAME}:production-${ROLLBACK_VERSION}
+                                docker image inspect $IMG >/dev/null || { echo "Image rollback tidak ditemukan"; exit 1; }
 
-                            for i in $(seq 1 30); do
-                            docker exec agen46-db-prod pg_isready -U ${DB_PROD_USER} -d agen46_prod >/dev/null 2>&1 && break
-                            sleep 1
-                            done
-                            docker exec agen46-db-prod pg_isready -U ${DB_PROD_USER} -d agen46_prod || exit 1
-
-                            docker rm -f agen46-prod || true
-                            docker pull ${REGISTRY}/${IMAGE_NAME}:production-${ROLLBACK_VERSION}
-                            docker run -d --name agen46-prod --network agen46-net --restart unless-stopped -p 8083:8080 \
-                            -e APP_ENV=production -e BUILD_NUMBER=${ROLLBACK_VERSION} \
-                            -e DB_HOST=agen46-db-prod -e DB_PORT=5432 -e DB_NAME=agen46_prod \
-                            -e DB_USER=${DB_PROD_USER} -e DB_PASSWORD=${DB_PROD_PASS} \
-                            ${REGISTRY}/${IMAGE_NAME}:production-${ROLLBACK_VERSION}
-                            curl -s "http://localhost:9000/update?stage=production-rollback&build=${ROLLBACK_VERSION}" || true
-                            '''
+                                docker rm -f agen46-prod || true
+                                docker run -d --name agen46-prod --network agen46-net --restart unless-stopped -p 8083:8080 \
+                                -e APP_ENV=production -e BUILD_NUMBER=${ROLLBACK_VERSION} \
+                                -e DB_HOST=agen46-db-prod -e DB_PORT=5432 -e DB_NAME=agen46_prod \
+                                -e DB_USER=${DB_PROD_USER} -e DB_PASSWORD=${DB_PROD_PASS} \
+                                $IMG
+                                curl -s "http://localhost:9000/update?stage=production-rollback&build=${ROLLBACK_VERSION}" || true
+                                '''
+                            }
                         } else {
                             echo 'Deploy ke environment Production (container lokal, image hasil promote dari Testing)...'
                             sh '''
@@ -483,13 +479,16 @@ pipeline {
                                 } else {
                                     withEnv(["LAST_STABLE=${lastStable}"]) {
                                         sh '''
+                                        IMG=${REGISTRY}/${IMAGE_NAME}:production-${LAST_STABLE}
+                                        docker pull $IMG || IMG=${IMAGE_NAME}:production-${LAST_STABLE}
+                                        docker image inspect $IMG >/dev/null || { echo "Image rollback tidak ditemukan"; exit 1; }
+
                                         docker rm -f agen46-prod || true
-                                        docker pull ${REGISTRY}/${IMAGE_NAME}:production-${LAST_STABLE}
                                         docker run -d --name agen46-prod --network agen46-net --restart unless-stopped -p 8083:8080 \
                                           -e APP_ENV=production -e BUILD_NUMBER=${LAST_STABLE} \
                                           -e DB_HOST=agen46-db-prod -e DB_PORT=5432 -e DB_NAME=agen46_prod \
                                           -e DB_USER=${DB_PROD_USER} -e DB_PASSWORD=${DB_PROD_PASS} \
-                                          ${REGISTRY}/${IMAGE_NAME}:production-${LAST_STABLE}
+                                          $IMG
                                         curl -s "http://localhost:9000/update?stage=production-rollback-auto&build=${LAST_STABLE}" || true
                                         '''
                                     }
