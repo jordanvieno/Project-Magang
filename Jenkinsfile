@@ -30,11 +30,11 @@ pipeline {
     options {
         disableConcurrentBuilds()
         timeout(time: 1, unit: 'HOURS')
-        buildDiscarder(logRotator(numToKeepStr: '5'))
+        buildDiscarder(logRotator(numToKeepStr: '10'))
     }
 
     triggers {
-        pollSCM('H/5 * * * *')
+        pollSCM('* * * * *')
     }
 
     tools {
