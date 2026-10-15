@@ -415,6 +415,14 @@ pipeline {
                                 $IMG
                                 curl -s "http://localhost:9000/update?stage=production-rollback&build=${ROLLBACK_VERSION}" || true
                                 '''
+                            def ok = false
+                            for (int i = 1; i <= 5 && !ok; i++) {
+                                sleep(time: 3, unit: 'SECONDS')
+                                ok = sh(script: "curl -sf http://localhost:8083/api/v1/payments/health | grep -q '\"database\":\"UP\"'", returnStatus: true) == 0
+                                echo "Percobaan ${i}: ${ok ? 'sehat' : 'belum sehat'}"
+                            }
+                            if (!ok) { error("Rollback ke ${params.ROLLBACK_VERSION} gagal health check, perlu intervensi manual.") }
+                            sh 'echo ${ROLLBACK_VERSION} > /var/lib/jenkins/agen46-last-stable-production.txt'
                             }
                         } else {
                             echo 'Deploy ke environment Production (container lokal, image hasil promote dari Testing)...'
