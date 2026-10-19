@@ -186,7 +186,7 @@ pipeline {
                   -v /var/run/docker.sock:/var/run/docker.sock \
                   -v trivy-cache:/root/.cache/ \
                   aquasec/trivy:latest image \
-                  --timeout 15m \g
+                  --timeout 15m \
                   --severity CRITICAL \
                   --ignore-unfixed \
                   --exit-code 1 \
