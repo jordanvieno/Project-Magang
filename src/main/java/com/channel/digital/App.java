@@ -67,7 +67,8 @@ public class App {
         }
     }
 
-    static void sendResponse(com.sun.net.httpserver.HttpExchange exchange, int statusCode, String response, String contentType) throws IOException {
+    static void sendResponse(com.sun.net.httpserver.HttpExchange exchange, int statusCode, String response,
+            String contentType) throws IOException {
         exchange.getResponseHeaders().set("Content-Type", contentType);
         byte[] bytes = response.getBytes(java.nio.charset.StandardCharsets.UTF_8);
         exchange.sendResponseHeaders(statusCode, bytes.length);
@@ -92,7 +93,7 @@ public class App {
             long start = System.currentTimeMillis();
             rootRequestCount.incrementAndGet();
             String html = "<html>"
-                    + "<head><title>Agen46 Backend</title><meta http-equiv='refresh' content='5'></head>"
+                    + "<head><title>Backend</title><meta http-equiv='refresh' content='5'></head>"
                     + "<body style='background-color:" + finalColor
                     + "; color:white; font-family:sans-serif; text-align:center; padding-top:60px;'>"
                     + "<h1>Agen46 Backend</h1>"
